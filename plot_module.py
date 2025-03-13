@@ -33,7 +33,7 @@ def plot_histogram(values, interval=10, title="titre"):
     # Affichage
     plt.show()
 
-def plot_mesure_calcule(val_x, val_mesure, val_calcul):
+def plot_mesure_calcule(val_x, val_mesure, val_calcul, x_dep=None, y_dep=None):
     """
     Crée graphiques des valeurs observées et des valeurs calculés
 
@@ -46,9 +46,16 @@ def plot_mesure_calcule(val_x, val_mesure, val_calcul):
     val_mesure=check_is_array_to_list(val_mesure)
     val_calcul=check_is_array_to_list(val_calcul)
     
+    
+    
+    
     fig, ax = plt.subplots()
     ax.plot(val_x, val_calcul, '.')
     ax.plot(val_x, val_mesure, '.', alpha=0.3)
+    
+    if x_dep!=None and y_dep!=None:
+        ax.plot(x_dep, y_dep, '.')
+    
     # ax.plot(inc, B)
     plt.show()
     plt.close()
