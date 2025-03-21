@@ -8,40 +8,61 @@ import numpy as np
 import laspy
 from scipy.spatial import cKDTree
 import open3d as o3d;
+import matplotlib.pyplot as plt
+from sklearn.cluster import DBSCAN, HDBSCAN
+from sklearn.neighbors import NearestNeighbors
 
-       
         
-def array_TO_o3d( pointcloudarray):
+def array_TO_o3d(pointcloudarray, normales=None, color=None):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(pointcloudarray)
+    if normales is not None:
+        pcd.normals = o3d.utility.Vector3dVector(normales)
+    if color is not None:
+        pcd.colors = o3d.utility.Vector3dVector(color)
     
     return pcd
 def o3d_TO_array(pcd_o3d):
-    return np.asarray(pcd_o3d.points)
+    
+    return np.asarray(pcd_o3d.points), np.asarray(pcd_o3d.normals)
 
 def readlas_to_numpy(path):
     
     las = laspy.read(path)
-
+    # print(las.point_format)
+    # print(las.point_records)
     # Extraire les coordonnées des points x, y, z
+
     point_cloud = np.vstack((las.x, las.y, las.z)).transpose()
+    normal_pcd = np.vstack((las.points["normal x"], las.points["normal y"], las.points["normal z"])).transpose()
+    normal_rgb = np.vstack((las.points["red"], las.points["green"], las.points["blue"])).transpose()
     
-    return point_cloud
+    normal_pcd=np.array([normal_pcd[i]/(np.linalg.norm(normal_pcd[i])*2) for i in range(normal_pcd.shape[0])])
+    for i in range(normal_pcd.shape[0]):
+        if i==10:
+            break
+        print(normal_pcd[i])
+    # Afficher les formats du nuage de points
+    # for dimension in las.point_format.dimensions:
+    #     print(dimension.name)
+    
+    return point_cloud, normal_pcd
 
 
 def readlas_TO_o3d(path):
     array=readlas_to_numpy(path)
     return array_TO_o3d(array)
 
-def points_inside_mesh(point_cloud, mesh):
+def points_inside_mesh(point_cloud, normal, mesh):
 
     #NECESSITE pip install rtree
     inside_mask = mesh.contains(point_cloud)
     
     points_inside = point_cloud[inside_mask]
+    normals_inside=normal[inside_mask]
     print(f"Nombre de points à l'intérieur du maillage : {len(points_inside)}")
 
-    return points_inside
+    return points_inside, normals_inside
 
 def save_point_cloud_las(points, output_file):
     """
@@ -55,7 +76,7 @@ def save_point_cloud_las(points, output_file):
     
     # Créer un objet LasData
     las_data = laspy.LasData(header)
-    print(f"Nombre de points réduit : {len(points)}")
+    print(f"Nombre de points : {len(points)}")
     # Ajouter les coordonnées des points à l'objet LasData
     las_data.x = points[:, 0]
     las_data.y = points[:, 1]
@@ -88,7 +109,7 @@ def reduction_nuage_nbre(points, nbre=1000):
 
 
 
-def reduction_nuage_voxel(points, voxel=2):
+def reduction_nuage_voxel(o3d_point, voxel=2):
     """
     Sous-échantillonnage aléatoire des points.
 
@@ -97,11 +118,10 @@ def reduction_nuage_voxel(points, voxel=2):
     
     Retourne un sous-ensemble des points sélectionnés aléatoirement.
     """
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    voxel_down_pcd = pcd.voxel_down_sample(voxel_size=voxel)
+
+    voxel_down_pcd = o3d_point.voxel_down_sample(voxel_size=voxel)
     
-    return np.asarray(voxel_down_pcd.points)
+    return voxel_down_pcd
 
 def suppression_point_isole(point_cloud, k=2):
     """
@@ -146,10 +166,9 @@ def suppression_point_isole(point_cloud, k=2):
     
     return non_isolated_point
     
-def remove_statistical_outlier_pcd(point_cloud):
+def remove_statistical_outlier_pcd(pcd):
     
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(point_cloud)
+    
     print("Statistical oulier removal")
     cl, ind = pcd.remove_statistical_outlier(nb_neighbors=20,std_ratio=0.1)
     inlier_cloud = pcd.select_by_index(ind)
@@ -158,10 +177,124 @@ def remove_statistical_outlier_pcd(point_cloud):
     # Appliquer des couleurs
     inlier_cloud.paint_uniform_color([0.0, 1.0, 0.0])  # Vert
     outlier_cloud.paint_uniform_color([1.0, 0.0, 0.0])  # Rouge
-
-    return np.asarray(inlier_cloud.points)
+    o3d.io.write_point_cloud("inlier_cloud.ply", inlier_cloud)
+    o3d.io.write_point_cloud("outlier_cloud.ply", outlier_cloud)
+    return inlier_cloud
         
 
+
+def LABELISATION_POINTSCLOUD(o3d_point):
+    segment_models={}
+    segments={}
+    max_plane_idx=10
     
+    rest=o3d_point
+    for i in range(max_plane_idx):
+        colors = plt.get_cmap("tab20")(i)
+        print(f"Nombre de points dans le nuage de points : {len(rest.points)}")
+        if len(rest.points)<10:
+            break
+        segment_models[i], inliers = rest.segment_plane(
+        distance_threshold=1,ransac_n=3,num_iterations=1000)
+        segments[i]=rest.select_by_index(inliers)
+        labels = np.array(segments[i].cluster_dbscan(eps=4, min_points=150))
+        candidates=[len(np.where(labels==j)[0]) for j in np.unique(labels)]
+        best_candidate=int(np.unique(labels)[np.where(candidates== np.max(candidates))[0]])
+        rest = rest.select_by_index(inliers, invert=True) + segments[i].select_by_index(list(np.where(labels!=best_candidate)[0]))
+        segments[i]=segments[i].select_by_index(list(np.where(labels== best_candidate)[0]))
+        segments[i].paint_uniform_color(list(colors[:3]))
+        print("pass",i,"/",max_plane_idx,"done.")
         
+    labels = np.array(rest.cluster_dbscan(eps=2, min_points=50))
+    max_label = labels.max()
+    print(f"point cloud has {max_label + 1} clusters")
+    colors = plt.get_cmap("tab10")(labels / (max_label if max_label > 0 else 1))
+    colors[labels < 0] = 0
+    rest.colors = o3d.utility.Vector3dVector(colors[:, :3])
+    o3d.visualization.draw_geometries([segments[i] for i in range(max_plane_idx)]+[rest])
+    return segments, segment_models[i]
+
+
+def calcul_normal_point_cloud(pointcloud, normales=None):
+    o3d_pcd=array_TO_o3d(pointcloud)
+    o3d_pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=1, max_nn=30))
+    
+    
+    calculated_normals = np.asarray(o3d_pcd.normals)
+
+    # Normaliser les normales calculées (pour éviter les erreurs de longueur)
+    calculated_normals = calculated_normals / np.linalg.norm(calculated_normals, axis=1)[:, np.newaxis]
+    
+    # Normaliser les directions approximatives
+    directions = normales / np.linalg.norm(normales, axis=1)[:, np.newaxis]
+    
+    # Ajuster les normales calculées pour qu'elles aient le même sens que les normales approximatives
+    # Cela consiste à comparer chaque direction approximative avec la normale recalculée et inverser si nécessaire
+    for i in range(len(directions)):
+        if np.dot(directions[i], calculated_normals[i]) < -0.3:
+            calculated_normals[i] = -calculated_normals[i]
+        elif np.dot(directions[i], calculated_normals[i]) < 0.3:
+            calculated_normals[i] = np.array([0,0,1])
+    
+    # Assigner les normales ajustées au nuage de points
+    # o3d_pcd.normals = o3d.utility.Vector3dVector(calculated_normals)
+    
+    return calculated_normals
+    
+    
+
+def view_point_cloud_from_array(pointcloud, normales=None, color=None):
+    x=np.median(pointcloud[:,0])
+    y=np.median(pointcloud[:,1])
+    z=np.median(pointcloud[:,2])
+    
+    
+    pointcloud[:,0]=pointcloud[:,0]-x
+    pointcloud[:,1]=pointcloud[:,1]-y
+    pointcloud[:,2]=pointcloud[:,2]-z
+    
+    o3d_pcd=array_TO_o3d(pointcloud, normales, color)
+
+        
+    
+    visualizer = o3d.visualization.Visualizer()
+    visualizer.create_window()
+    visualizer.add_geometry(o3d_pcd)
+    if normales is not None:
+        visualizer.get_render_option().point_show_normal = True
+    # Obtenir les options d'affichage et ajuster la taille des normales
+    opt = visualizer.get_render_option()
+    opt.point_size = 5  # Réduit la taille des points (si nécessaire)
+    opt.line_width = 0.5  # La largeur des lignes pour les normales
+    visualizer.run()
+    
+    
+def DBSCAN_pointcloud(point_cloud, min_samples=10, n_neig=2):
+    X=point_cloud
+    neigh = NearestNeighbors(n_neighbors=n_neig)
+    nbrs = neigh.fit(X)
+    distances, indices = nbrs.kneighbors(X)
+    distances = np.sort(distances, axis=0)
+    distances = distances[:,n_neig-1]
+    plt.plot(distances);
+    mean=np.mean(distances)
+    pourc90=int(distances.shape[0]*0.9)
+    print(pourc90)
+    y_pred = DBSCAN(eps = distances[pourc90], min_samples=min_samples).fit_predict(X)
+    unique_clusters = np.unique(y_pred)
+    print(np.delete(unique_clusters, 0))
+    
+    clusters = [X[y_pred == cluster_id] for cluster_id in unique_clusters]
+    return clusters, y_pred
+    
+def HDBSCAN_pointcloud(point_cloud, min_samples=10, n_neig=2):
+    X=point_cloud
+
+    hdb = HDBSCAN().fit(X)
+    y_pred=hdb.labels_
+    # plot(X, hdb.labels_, hdb.probabilities_)
+    unique_clusters = np.unique(y_pred)
+    clusters = {str(cluster_id): X[y_pred == cluster_id] for cluster_id in unique_clusters}
+    return clusters, y_pred
+    
     

@@ -33,7 +33,7 @@ def plot_histogram(values, interval=10, title="titre"):
     # Affichage
     plt.show()
 
-def plot_mesure_calcule(val_x, val_mesure, val_calcul, x_dep=None, y_dep=None):
+def plot_mesure_calcule(val_x, val_mesure, val_calcul, title, x_dep=None, y_dep=None):
     """
     Crée graphiques des valeurs observées et des valeurs calculés
 
@@ -47,19 +47,42 @@ def plot_mesure_calcule(val_x, val_mesure, val_calcul, x_dep=None, y_dep=None):
     val_calcul=check_is_array_to_list(val_calcul)
     
     
-    
-    
     fig, ax = plt.subplots()
-    ax.plot(val_x, val_calcul, '.')
-    ax.plot(val_x, val_mesure, '.', alpha=0.3)
     
+    
+    
+    
+    ax.plot(val_x, val_calcul, '.', label='Moindre carré')
+    ax.plot(val_x, val_mesure, '.',label='Monoplotting', alpha=0.3)
     if x_dep!=None and y_dep!=None:
-        ax.plot(x_dep, y_dep, '.')
+        ax.plot(x_dep, y_dep, '.', label='Pts non utilisé', alpha=0.5)
     
+    plt.xlabel('Valeurs Depth IA', fontsize=12)
+    plt.ylabel('Valeurs terrain', fontsize=12)
     # ax.plot(inc, B)
+    plt.legend()
+    plt.title(title)
     plt.show()
     plt.close()
     
+def plot_from_liste_prof(liste_prof):
+    x=[]
+    y=[]
+    for mesure in liste_prof:
+        x.append(mesure[4])
+        y.append(mesure[2])
+    fig, ax = plt.subplots()
+    
+    ax.plot(x, y, '.', alpha=0.3)
+
+    
+    plt.xlabel('Valeurs Depth IA', fontsize=12)
+    plt.ylabel('Valeurs terrain', fontsize=12)
+    # ax.plot(inc, B)
+    # plt.legend()
+    plt.title("Valeur des profondeurs IA et monoplotting")
+    plt.show()
+    plt.close()
     
 
 def check_is_array_to_list(arrayliste):
