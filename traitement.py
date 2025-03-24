@@ -6,6 +6,9 @@ import pointcloud_module as pcd_m
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN, HDBSCAN
 from sklearn.neighbors import NearestNeighbors
+import shapely
+from shapely.geometry import Point, Polygon
+import time
 #Points sur la maison devant
 M=np.array([
     2528510.114,
@@ -50,7 +53,7 @@ fichier_path = 'C:/Users/Bruno/Documents/TM_script/Terrain/camera_ORIENTAITON.tx
 nikon.import_image_from_omega_phi_kappa_file(fichier_path)
 pathlas="C:/Users/Bruno/Documents/TM_script/Terrain/point_homologue.las"
 pathlas="C:/Users/Bruno/Documents/TM_script/Terrain/point_dense_reduce.las"
-depthanything=cm.depthmap("C:/Users/Bruno/Documents/TM_script/Terrain/_DSC6987_556-371_red.tif", "_DSC6987",pathlas, False, nikon )
+depthanything=cm.depthmap("_DSC6987_50.tif", "_DSC6987",pathlas, True, nikon )
 dict_prof=depthanything.dict_prof
 list_prof=depthanything.dict_prof_TO_liste(dict_prof)
 array_prof=np.array(list_prof)
@@ -84,8 +87,17 @@ M_calc_d_projet=nikon.uv_to_M_by_dist_prof(photoname, m, d_proj)
 # clusters, y_pred=pcd_m.DBSCAN_pointcloud(x, min_samples=4, n_neig=3)
 # depthanything.clusters=clusters
 # pcd_m.readlas_to_numpy(pathlas)
-
+start_time = time.time()
+print(start_time)
 cluster_liste=depthanything.optimisation_des_clusters()
+param_cluster=depthanything.param_transfo_cluster
+
+end_time = time.time()
+print(end_time)
+elapsed_time = end_time - start_time
+print(f"Durée d'exécution de calcul de Clusters : {elapsed_time:.2f} secondes")
+
+
 
 # unique_labels = np.unique(y_pred)
 # mask_noise=y_pred==-1  #CHOIX DU CLUSTER -1 correspond au point de bruit
@@ -130,9 +142,18 @@ cluster_liste=depthanything.optimisation_des_clusters()
 # pointcloud_depthia=depthanything.depthmap_ia_to_o3d_pcd()
 # pcd_m.view_point_cloud_from_array(np.asarray(pointcloud_depthia.points))
 
-
-
-
+#%% CALCUL POUR CHAQUE POINT DE LA DEPTHMAP
+start_time = time.time()
+print(start_time)
+# depthanything.calcul_dist_ajustee()
+# depth_ajuste=depthanything.depthmap_ajustee
+print(end_time)
+elapsed_time = end_time - start_time
+print(f"Durée d'exécution du calcul ajusté de la Depthmap : {elapsed_time:.2f} secondes")
+# value=depthanything.calcul_dist_ajust_from_uv(np.array([231,95]), 300, 400)
+# depthmap_ia=depthanything.depthmap_IA
+# depthanything.save_image_depthmap(depthanything.depthmap_ajustee, "Res_final")
+# depthanything.save_pointcloud_from_depthmap(depthanything.depthmap_ajustee, "Res_final.las")
 
 #%%Variable des debugs 
 #===================================================================================================================================

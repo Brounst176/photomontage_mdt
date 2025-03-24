@@ -9,7 +9,7 @@ import laspy
 from scipy.spatial import cKDTree
 import open3d as o3d;
 import matplotlib.pyplot as plt
-from sklearn.cluster import DBSCAN, HDBSCAN
+from sklearn.cluster import DBSCAN, HDBSCAN, KMeans
 from sklearn.neighbors import NearestNeighbors
 
         
@@ -37,11 +37,8 @@ def readlas_to_numpy(path):
     normal_pcd = np.vstack((las.points["normal x"], las.points["normal y"], las.points["normal z"])).transpose()
     normal_rgb = np.vstack((las.points["red"], las.points["green"], las.points["blue"])).transpose()
     
-    normal_pcd=np.array([normal_pcd[i]/(np.linalg.norm(normal_pcd[i])*2) for i in range(normal_pcd.shape[0])])
-    for i in range(normal_pcd.shape[0]):
-        if i==10:
-            break
-        print(normal_pcd[i])
+    
+
     # Afficher les formats du nuage de points
     # for dimension in las.point_format.dimensions:
     #     print(dimension.name)
@@ -267,7 +264,9 @@ def view_point_cloud_from_array(pointcloud, normales=None, color=None):
     opt.point_size = 5  # Réduit la taille des points (si nécessaire)
     opt.line_width = 0.5  # La largeur des lignes pour les normales
     visualizer.run()
-    
+
+
+# def DBSCAN_OR_KMEANS(point_cloud, min_samples, n_neig=2)
     
 def DBSCAN_pointcloud(point_cloud, min_samples=10, n_neig=2):
     X=point_cloud
@@ -276,25 +275,59 @@ def DBSCAN_pointcloud(point_cloud, min_samples=10, n_neig=2):
     distances, indices = nbrs.kneighbors(X)
     distances = np.sort(distances, axis=0)
     distances = distances[:,n_neig-1]
-    plt.plot(distances);
+    # plt.plot(distances);
     mean=np.mean(distances)
-    pourc90=int(distances.shape[0]*0.9)
-    print(pourc90)
+    pourc90=int(distances.shape[0]*0.90)
+
     y_pred = DBSCAN(eps = distances[pourc90], min_samples=min_samples).fit_predict(X)
     unique_clusters = np.unique(y_pred)
-    print(np.delete(unique_clusters, 0))
+    np.delete(unique_clusters, 0)
     
     clusters = [X[y_pred == cluster_id] for cluster_id in unique_clusters]
     return clusters, y_pred
     
-def HDBSCAN_pointcloud(point_cloud, min_samples=10, n_neig=2):
+
+def KMEANS_pointcloud(array, interie_fact=0.1):
+    X=array
+    inertias = []
+    diff=[]
+    for i in range(1,9):
+        kmeans = KMeans(n_clusters=i)
+        kmeans.fit(X)
+        inertias.append(kmeans.inertia_)
+    n=0
+    for i in range(len(inertias)):
+        if i == len(inertias)-2:
+            n=i
+            break
+        a=np.array([i+1, inertias[i+1]])
+        b=np.array([i, inertias[i]])
+        PS=a-b
+        N=np.array([inertias[i+2]-inertias[i], i+2-i])
+        norm_N=np.linalg.norm(N)
+        norm_PS=np.linalg.norm(PS)
+        norm_proj=np.abs((PS@N)/(norm_PS*norm_N)*norm_PS)
+        
+        if norm_proj>interie_fact*norm_N:
+            n=i
+            break
+    kmeans = KMeans(n_clusters=i)
+    kmeans.fit(X)
+    y_pred=kmeans.labels_
+    unique_clusters = np.unique(y_pred)
+    clusters = [X[y_pred == cluster_id] for cluster_id in unique_clusters]
+    return clusters, y_pred
+
+
+def HDBSCAN_pointcloud(point_cloud):
     X=point_cloud
 
-    hdb = HDBSCAN().fit(X)
+    hdb = HDBSCAN(min_samples=1).fit(X)
     y_pred=hdb.labels_
     # plot(X, hdb.labels_, hdb.probabilities_)
     unique_clusters = np.unique(y_pred)
-    clusters = {str(cluster_id): X[y_pred == cluster_id] for cluster_id in unique_clusters}
+
+    clusters = [X[y_pred == cluster_id] for cluster_id in unique_clusters]
     return clusters, y_pred
     
     
