@@ -565,7 +565,88 @@ class depthmap:
                 
         return liste_prof
         
+    def transformation_simple_depthmap_IA(self):
+        max_dethaIA=int(np.max(self.depthmap_IA))
+        inter=max_dethaIA//5
         
+        list_prof=self.dict_prof_TO_liste(self.dict_prof)
+        array_prof=np.array(list_prof)
+        # Trier le tableau par la 5e colonne (colonne indexée à 4)
+        sorted_array = array_prof[array_prof[:, 4].argsort()[::-1]]
+        sorted_list=sorted_array.tolist()
+        Quot=0
+        liste=[]
+        index=1
+        # liste_transfo=[]
+        # inter = creer_liste_intervalles(50, sorted_array.shape[0])
+        # while len(inter)>0:
+        #     param, i_supp=self.calcul_iteratif_sur_quot(inter, sorted_list)
+        #     liste_transfo.append(param)
+        #     for i in range(i_supp):
+        #         del inter[0]
+        A, B,Qll, inc, wi, vi, X, B_calc ,s0 , Quot=self.tranformation_depthanything_gauss(sorted_list, nbre_inc=3)
+        
+        plot.plot_mesure_calcule(X, B, B_calc, "2D")
+    
+    def creer_grille_point(self):
+        width=self.depthmap_ajustee.shape[1]
+        height=self.depthmap_ajustee.shape[0]
+        intervalle_u=creer_liste_intervalles(20, width)
+        intervalle_v=creer_liste_intervalles(20, height)
+        liste_points_grille=[]
+        clusters_dict = self.param_transfo_cluster
+        for u in intervalle_u:
+            for v in intervalle_v:
+                depthajuste_value=self.depthmap_ajustee[v[1], u[1]]
+                if depthajuste_value>0 and depthajuste_value!=9999:
+                    point=np.array([u[1], v[1],depthajuste_value])
+                    liste_points_grille.append(point)
+                    id_cluster=str(int(self.depthmap_clusters[v[1], u[1]]))
+                    if id_cluster in clusters_dict:
+                        print(f"{id_cluster} _suppriemr")
+                        clusters_dict.pop(id_cluster)
+        # print(clusters_dict)
+        
+        fact=self.fact_reduce_depthajuste/self.fact_reduce_IA
+        for id_cluster in clusters_dict:
+            centre= clusters_dict[id_cluster]["enveloppe"].centroid
+            coords = list(centre.coords)[0]
+
+            depthajuste_value=self.depthmap_ajustee[int(coords[1]*fact), int(coords[0]*fact)]
+            if depthajuste_value>0 and depthajuste_value!=9999:
+                point=np.array([coords[0]*fact, coords[1]*fact,depthajuste_value])
+                liste_points_grille.append(point)
+            
+        array_grillee=np.array(liste_points_grille)
+        plt.plot(array_grillee[:,0],-array_grillee[:,1], ".")
+        plt.show()
+        plt.close()
+                    
+            
+    def calcul_iteratif_sur_quot(self, liste_intervalle, sorted_list):
+        liste=[]
+        i=0
+        for inter in liste_intervalle:
+            liste_inter=sorted_list[inter[0]: inter[1]]
+            liste_prov=liste+liste_inter
+            A, B,Qll, inc, wi, vi, X, B_calc ,s0 , Quot=self.tranformation_depthanything_gauss(liste_prov, nbre_inc=3)
+            if Quot<1:
+                i+=1
+                inc_prec=inc.copy()
+                liste=liste_prov
+                max_liste=np.max(np.array(liste)[:,4])
+                min_liste=np.min(np.array(liste)[:,4])
+                Quot_prec=Quot
+            else:
+                if i==0:
+                    i=1
+                    liste=liste_prov
+                    inc_prec=inc.copy()
+                    max_liste=np.max(np.array(liste)[:,4])
+                    min_liste=np.min(np.array(liste)[:,4])
+                    Quot_prec=Quot
+                return [inc_prec, Quot_prec, max_liste, min_liste], i
+            
     
     
     def creation_des_clusters(self, array_prof, view=False, first=False):
@@ -606,7 +687,7 @@ class depthmap:
                         cluster=self.creation_des_clusters(array_cluster)
                         list_clusters=list_clusters+cluster
                     else:
-                        array_cluster=np.array(inliers)
+                        # array_cluster=np.array(inliers)
                         min_d=np.min(array_cluster[:,2])
                         max_d=np.max(array_cluster[:,2])
                         cluster=[[ array_cluster, min_d, max_d]]
@@ -628,7 +709,7 @@ class depthmap:
         for i, cluster in enumerate(list_clusters):
             points_uv=self.calcul_transformation_cluster( cluster[0], i)
             points_cluster_uv=points_cluster_uv+points_uv
-            
+        print(f"Nbre de points {len(points_cluster_uv)}")
         print(f"FIN DU CALCUL DES CLUSTERS")
         print(f"--------------------------------------------------")
         self.debug=np.array(points_cluster_uv)
@@ -701,11 +782,13 @@ class depthmap:
 
         Qll=1/sigma0**2*Kll
         inc, vi, wi, B_calc,s0, Quot=self.gauss_markov(Qll, A, B, robuste=False)
-        self.optimisation_quadratique(Qll,A, B)
+
+        inc  = self.optimisation_quadratique(Qll,A, B)
         
         
         points_uv=[]
-        if Quot<2:
+        # if Quot<2.5:
+        if inc is not None:
             self.param_transfo_cluster[str(cluster_index)]={"inc":inc, "quot": Quot, "enveloppe" : alpha_shape, "bounding_box": bounding_box_depthmap}
             fact=self.fact_reduce_depthajuste/self.fact_reduce_IA
             bounding_box=np.array([[np.min(cluster_array[:,0]), np.max(cluster_array[:,1])],[np.max(cluster_array[:,0]), np.min(cluster_array[:,1])]])
@@ -733,7 +816,7 @@ class depthmap:
                                 # dist=inc[0,0]*u+inc[1,0]*v+inc[2,0]*depth_IA_value+inc[3,0]
                                 dist=inc[0,0]*u_IA+inc[1,0]*depth_IA_value+inc[2,0]
                                 points_uv.append(self.camera.uv_to_M_by_dist_prof(self.photoname, uv, dist))
-                                    
+                                
                                 self.depthmap_clusters[v,u]=cluster_index
                                 self.depthmap_ajustee[v,u]=dist
         
@@ -755,7 +838,7 @@ class depthmap:
         inc=Qxx@A.T@P@B
         vi=A@inc-B
         s0=np.sqrt((vi.T@P@vi)/(nb_l-nb_i))
-
+        
         
         if robuste:
             prev_inc=inc.copy()
@@ -802,21 +885,28 @@ class depthmap:
         h = B
         G=np.zeros((1, nb_i+nb_l))
         G[0,1]=1
-        g=np.zeros((1,1))
+        g=np.zeros((nb_i+nb_l,1))
+        g[1,0]=-0.00000000000001
 
         
         objective = cp.Minimize(1/2*cp.quad_form(x,F) + f.T @ x)
 
-        constraints = [H@x == h, -G@x>=g]
+        constraints = [H@x == h, G@x<=g]
         #resolution du système
         prob = cp.Problem(objective, constraints)
-        prob.solve()
+        try:
+            prob.solve()
+            print("\nLa valeur optimale est : ", prob.value)
+            print("Le statut de la solution est:", prob.status)
+            print("La solution x est:")
+            # print(x.value)
+            return x.value
+        except:
+            print("Le statut de la solution est:", prob.status)
+            return None
+            
         
-        print("\nLa valeur optimale est : ", prob.value)
-        print("Le statut de la solution est:", prob.status)
-        print("La solution x est:")
-        print(x.value)
-        return x.value
+        
 
     def fonction_de_perte_huber(self,residuals, delta):
         """Calcule la fonction de perte de Huber pour les résidus."""
@@ -852,8 +942,9 @@ class depthmap:
                 for cluster in self.param_transfo_cluster:
                     geometrie_cluster=self.param_transfo_cluster[cluster]["enveloppe"]
                     Point_uv = Point(u_IA, v_IA)
-                    distance = geometrie_cluster.distance(Point_uv)
-                    list_dist_cluster.append((cluster, distance, np.mean(self.param_transfo_cluster[cluster]["bounding_box"])))
+                    mean_boundgin_box=np.mean(self.param_transfo_cluster[cluster]["bounding_box"])
+                    distance = (geometrie_cluster.distance(Point_uv)**2+(depth_IA_value+mean_boundgin_box)**2)**0.5
+                    list_dist_cluster.append((cluster, distance, mean_boundgin_box))
                     
                 liste_triee = sorted(list_dist_cluster, key=lambda x: x[1])
                 top_10 = liste_triee[:10]
@@ -1110,11 +1201,11 @@ class depthmap:
         self.save_pointcloud_from_depthmap(self.depthmap_ajustee, "resultat")
         self.save_image_depthmap(self.depthmap_ajustee, "resultat")
             
-    def tranformation_depthanything_gauss(self, liste_prof, rob=4):
-        
+    def tranformation_depthanything_gauss(self, liste_prof, rob=4, nbre_inc=5):
+        print(liste_prof)
         print(f"calcul de gauss-markov")
         nbre_valeur=100
-        nb_i=5
+        nb_i=nbre_inc
         nb_l=len(liste_prof)
         A=np.zeros((nb_l,nb_i))
         B=np.zeros((nb_l,1))
@@ -1144,12 +1235,12 @@ class depthmap:
                 A[i, j]=x**(nb_i-1-j)
                 
                 
-        inc, vi, wi, B_calc,s0, Quot=self.gauss_markov(Qll, A, B)
+        inc, vi, wi, B_calc,s0, Quot=self.gauss_markov(Qll, A, B, robuste=False)
 
             
         print(f"calcul de gauss-markov terminé")
         
-        return A, B,Qll, inc, wi, vi, X, B_calc,s0
+        return A, B,Qll, inc, wi, vi, X, B_calc,s0, Quot
     
     
     def RANSAC_epuration(self, liste_prof, nbre_intervalle=4):

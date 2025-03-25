@@ -75,6 +75,10 @@ M_calc_d_projet=nikon.uv_to_M_by_dist_prof(photoname, m, d_proj)
 #%%CALCUL PAR SEPRATION DE GAUCHE A DROITE
 # plot.plot_from_liste_prof(list_prof)
 
+# depthanything.transformation_simple_depthmap_IA()
+
+# plot.plot_from_liste_prof(list_prof)
+
 # depthanything.initialisation_calc_par_groupe_colonne_pour_moindre_carre()
 
 
@@ -142,6 +146,10 @@ print(f"Durée d'exécution de calcul de Clusters : {elapsed_time:.2f} secondes"
 # pointcloud_depthia=depthanything.depthmap_ia_to_o3d_pcd()
 # pcd_m.view_point_cloud_from_array(np.asarray(pointcloud_depthia.points))
 
+
+#%% Calcul grille de points pour calcul
+depthanything.creer_grille_point()
+
 #%% CALCUL POUR CHAQUE POINT DE LA DEPTHMAP
 start_time = time.time()
 print(start_time)
@@ -152,6 +160,8 @@ elapsed_time = end_time - start_time
 print(f"Durée d'exécution du calcul ajusté de la Depthmap : {elapsed_time:.2f} secondes")
 # value=depthanything.calcul_dist_ajust_from_uv(np.array([231,95]), 300, 400)
 # depthmap_ia=depthanything.depthmap_IA
+
+#%% Sauvegarde du résultat
 # depthanything.save_image_depthmap(depthanything.depthmap_ajustee, "Res_final")
 # depthanything.save_pointcloud_from_depthmap(depthanything.depthmap_ajustee, "Res_final.las")
 
