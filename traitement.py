@@ -153,8 +153,9 @@ depthanything.creer_grille_point()
 #%% CALCUL POUR CHAQUE POINT DE LA DEPTHMAP
 start_time = time.time()
 print(start_time)
-# depthanything.calcul_dist_ajustee()
+depthanything.calcul_dist_ajustee()
 # depth_ajuste=depthanything.depthmap_ajustee
+end_time = time.time()
 print(end_time)
 elapsed_time = end_time - start_time
 print(f"Durée d'exécution du calcul ajusté de la Depthmap : {elapsed_time:.2f} secondes")
@@ -162,8 +163,8 @@ print(f"Durée d'exécution du calcul ajusté de la Depthmap : {elapsed_time:.2f
 # depthmap_ia=depthanything.depthmap_IA
 
 #%% Sauvegarde du résultat
-# depthanything.save_image_depthmap(depthanything.depthmap_ajustee, "Res_final")
-# depthanything.save_pointcloud_from_depthmap(depthanything.depthmap_ajustee, "Res_final.las")
+depthanything.save_image_depthmap(depthanything.depthmap_ajustee, "Res_final")
+depthanything.save_pointcloud_from_depthmap(depthanything.depthmap_ajustee, "Res_final.las")
 
 #%%Variable des debugs 
 #===================================================================================================================================
