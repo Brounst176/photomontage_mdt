@@ -53,11 +53,16 @@ fichier_path = 'C:/Users/Bruno/Documents/TM_script/Terrain/camera_ORIENTAITON.tx
 nikon.import_image_from_omega_phi_kappa_file(fichier_path)
 pathlas="C:/Users/Bruno/Documents/TM_script/Terrain/point_homologue.las"
 pathlas="C:/Users/Bruno/Documents/TM_script/Terrain/point_dense_reduce.las"
+# depthanything=cm.depthmap("_DSC6987_50_depthpro.tif", "_DSC6987",pathlas, True, nikon )
+
 depthanything=cm.depthmap("_DSC6987_50.tif", "_DSC6987",pathlas, True, nikon )
+
+
+depthanything.transformation_simple_depthmap_IA()
 dict_prof=depthanything.dict_prof
 list_prof=depthanything.dict_prof_TO_liste(dict_prof)
 array_prof=np.array(list_prof)
-
+plot.plot_from_liste_prof(list_prof)
 photoname="_DSC6987"
 #%% Calcul pour contrôle fonction de photogrammétrie
 m=nikon.M_to_uv("_DSC6987", M)
@@ -71,6 +76,12 @@ H, d_proj=nikon.calcul_proj_cam("_DSC6987",M)
 # pointcloud, rgb = pcd_m.readlas_to_numpy(pathlas)
 
 M_calc_d_projet=nikon.uv_to_M_by_dist_prof(photoname, m, d_proj)
+
+
+# arr=depthanything.return_array_epurer_from(1050,1000)
+
+
+
 
 #%%CALCUL PAR SEPRATION DE GAUCHE A DROITE
 # plot.plot_from_liste_prof(list_prof)
@@ -102,70 +113,24 @@ elapsed_time = end_time - start_time
 print(f"Durée d'exécution de calcul de Clusters : {elapsed_time:.2f} secondes")
 
 
-
-# unique_labels = np.unique(y_pred)
-# mask_noise=y_pred==-1  #CHOIX DU CLUSTER -1 correspond au point de bruit
-# 
-# CHOIX DE COULEUR PAR CLUSTER
-# colors = plt.cm.get_cmap("tab10", len(unique_labels))
-# point_colors = np.array([colors(label)[:3] for label in y_pred]) 
-# array_prof_hdbscan=x[~mask_noise] #Valeur ne correspond pas au masque de bruit
-
-
-# pcd_m.view_point_cloud_from_array(np.delete(array_prof_hdbscan, 3, axis=1), color=point_colors[~mask_noise])
-# pcd_m.save_point_cloud_las(array_prof_hdbscan, "nuage_dbscan_cluster.las")
-
-
-# array_prof_hdbscan=x[mask_noise] #Valeur ne correspond pas au masque de bruit
-# pcd_m.view_point_cloud_from_array(np.delete(array_prof_hdbscan, 3, axis=1))
-# pcd_m.save_point_cloud_las(array_prof_hdbscan, "nuage_dbscan_noise.las")
-# plt.figure(2)
-# plt.scatter(array_prof[:,0], array_prof[:,1], c = y_pred)
-
-
-# array_prof_cluster6=array_prof[mask_noise]
-# 
-#2EME CLUSTER
-#------------------------------------------------------------------------------------------------------------------------------------
-# clusters, y_pred=pcd_m.DBSCAN_pointcloud(np.column_stack((array_prof_cluster6[:,4], array_prof_cluster6[:,2]*5)), min_samples=4, n_neig=2)
-# unique_labels = np.unique(y_pred)
-# colors = plt.cm.get_cmap("tab10", len(unique_labels))
-# point_colors = np.array([colors(label)[:3] for label in y_pred])
-# pcd_m.view_point_cloud_from_array(np.array(array_prof_cluster6[:,5].tolist()), color=point_colors)
-
-
-
-# mask_noise=y_pred==0
-# array_prof_cluster6_1=array_prof_cluster6[mask_noise]
-
-# pcd_m.view_point_cloud_from_array(np.array(array_prof_cluster6_1[:,5].tolist()))
-# inc, v, wi, B, B_calc,s0,X,B=depthanything.calcul_transformation_cluster(array_prof_cluster6,6)
-# ajuste_depth=depthanything.depthmap_ajustee
-# depthanything.save_image_depthmap(ajuste_depth, "test")
-
-# pointcloud_depthia=depthanything.depthmap_ia_to_o3d_pcd()
-# pcd_m.view_point_cloud_from_array(np.asarray(pointcloud_depthia.points))
-
-
 #%% Calcul grille de points pour calcul
 depthanything.creer_grille_point()
 
 #%% CALCUL POUR CHAQUE POINT DE LA DEPTHMAP
 start_time = time.time()
 print(start_time)
-depthanything.calcul_dist_ajustee()
+depthanything.calcul_dist_ajustee(calcul_pt_homologue=True)
 # depth_ajuste=depthanything.depthmap_ajustee
 end_time = time.time()
 print(end_time)
 elapsed_time = end_time - start_time
 print(f"Durée d'exécution du calcul ajusté de la Depthmap : {elapsed_time:.2f} secondes")
-# value=depthanything.calcul_dist_ajust_from_uv(np.array([231,95]), 300, 400)
-# depthmap_ia=depthanything.depthmap_IA
+
 
 #%% Sauvegarde du résultat
 depthanything.save_image_depthmap(depthanything.depthmap_ajustee, "Res_final")
-depthanything.save_pointcloud_from_depthmap(depthanything.depthmap_ajustee, "Res_final.las")
-
+points_depthajustee=depthanything.save_pointcloud_from_depthmap(depthanything.depthmap_ajustee, "Res_final.las")
+pcd_m.view_point_cloud_from_array(np.array(points_depthajustee))
 #%%Variable des debugs 
 #===================================================================================================================================
 

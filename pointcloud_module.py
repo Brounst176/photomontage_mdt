@@ -238,9 +238,42 @@ def calcul_normal_point_cloud(pointcloud, normales=None):
     
     return calculated_normals
     
+
+def array_et_colors_set_from_clusters(array, labels):
+    """
     
 
+    Parameters
+    ----------
+    array : np.array
+        Tableau initial de array pour la création du cluster.
+    labels : liste
+        Liste des labels de groupe de cluster.
+
+    Returns
+    -------
+    x_debruite : TYPE
+        Retourne le array sans les points bruités (sans label -1).
+    color : liste
+        Liste des couleurs des array.
+
+    """
+    x=array
+    unique_labels = np.unique(labels)
+    
+
+
+    mask_noise=labels==-1 
+    colors = plt.cm.get_cmap("tab10", len(unique_labels))
+    point_colors = np.array([colors(label)[:3] for label in labels]) 
+    x_debruite=x[~mask_noise]
+    colors=point_colors[~mask_noise]
+    
+    return x_debruite, colors
+
+
 def view_point_cloud_from_array(pointcloud, normales=None, color=None):
+    
     x=np.median(pointcloud[:,0])
     y=np.median(pointcloud[:,1])
     z=np.median(pointcloud[:,2])

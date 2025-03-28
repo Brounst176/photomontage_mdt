@@ -312,7 +312,7 @@ class camera:
         
         return points_inside, normal_inside
         
-    def liste_coord_image_pt_homologue(self, pathlas, depthmap_IA, photoname, fact_reduce=0.1, calc_normal=False):
+    def liste_coord_image_pt_homologue(self, pathlas, depthmap_IA, photoname, fact_reduce=0.1, calc_normal=False, IA_modele="depthanythingV2"):
         """
         Créer un image avec les valeurs de profondeur depuis un nuage de points las
     
@@ -339,7 +339,7 @@ class camera:
         
         points_inside, normal_inside=pcd.points_inside_mesh(point_cloud, normales, mesh)
         depth_array=np.array(depthmap_IA)
-        
+
         # pcd.view_point_cloud_from_array(points_inside, normal_inside)
         if calc_normal:
             normal_inside=pcd.calcul_normal_point_cloud(points_inside, normal_inside)
@@ -523,11 +523,13 @@ class depthmap:
         fact_reduce : float, optional
             Facteur de reduction de l'image. The default is 0.1.
         """
-        self.depthmap_IA=self.create_depthmap(pathdepthmap_IA)
+        self.camera=camera
+        self.depthmap_IA=self.create_depthmap(pathdepthmap_IA, pathlas, photoname,fact_reduce_IA, calc_normal)
+        self.depthmap_IA_backup=self.depthmap_IA
         self.max_depthmap=np.max(self.depthmap_IA)
+        self.min_depthmap=np.max(self.depthmap_IA)
         self.IA_modele=IA_modele
         self.photoname=photoname
-        self.camera=camera
         self.fact_reduce_IA=fact_reduce_IA
         self.fact_reduce_depthajuste=fact_reduce_depthajuste
         self.depthmap_ajustee=self.initialisaiton_depthmap()
@@ -538,9 +540,12 @@ class depthmap:
         self.param_transfo_cluster={}
         self.grille_calcul=[]
         self.debug=""
-    def create_depthmap(self, pathDepth):
+    def create_depthmap(self, pathDepth, pathlas, photoname,fact_reduce_IA, calc_normal):
+        
         depthmap=Image.open(pathDepth)
-        return np.array(depthmap)
+        depthmap=np.array(depthmap)
+        
+        return depthmap
     
     def fusion_depthpro_depthanything(self, depthanything, depthpro=None):
         for i in range(depthpro.shape[0]):
@@ -554,6 +559,8 @@ class depthmap:
         shape0=int(self.depthmap_IA.shape[0]*(self.fact_reduce_depthajuste/self.fact_reduce_IA))
         shape1=int(self.depthmap_IA.shape[1]*(self.fact_reduce_depthajuste/self.fact_reduce_IA))
         depth_init=np.ones((shape0, shape1))*-1
+        
+        
         return depth_init
     
     
@@ -565,29 +572,85 @@ class depthmap:
                 liste_prof.append(prof_uv)
                 
         return liste_prof
+    
+    def depthmap_to_liste(self, depthmap):
+        liste_depthmap=[]
+        for i in range(depthmap.shape[0]):
+            for j in range(depthmap.shape[1]):
+                liste_depthmap.append([i, j, depthmap[i,j]])
+                
+        return liste_depthmap
+        
+        
         
     def transformation_simple_depthmap_IA(self):
-        max_dethaIA=int(np.max(self.depthmap_IA))
-        inter=max_dethaIA//5
+        """
+        Cette fonction transforme la depthmap IA vers un depthmap approximative et proche de la valeur terrain
+
+        Returns
+        -------
+        None.
+
+        """
+        dict_prof=self.dict_prof
+        array_prof=np.array(self.dict_prof_TO_liste(dict_prof))
+        array_prof = array_prof[array_prof[:, 2].argsort()]
         
-        list_prof=self.dict_prof_TO_liste(self.dict_prof)
-        array_prof=np.array(list_prof)
-        # Trier le tableau par la 5e colonne (colonne indexée à 4)
-        sorted_array = array_prof[array_prof[:, 4].argsort()[::-1]]
-        sorted_list=sorted_array.tolist()
-        Quot=0
-        liste=[]
-        index=1
-        # liste_transfo=[]
-        # inter = creer_liste_intervalles(50, sorted_array.shape[0])
-        # while len(inter)>0:
-        #     param, i_supp=self.calcul_iteratif_sur_quot(inter, sorted_list)
-        #     liste_transfo.append(param)
-        #     for i in range(i_supp):
-        #         del inter[0]
-        A, B,Qll, inc, wi, vi, X, B_calc ,s0 , Quot=self.tranformation_depthanything_gauss(sorted_list, nbre_inc=3)
+
         
-        plot.plot_mesure_calcule(X, B, B_calc, "2D")
+        
+        array_min=array_prof[0:10,:]
+        x=np.column_stack((array_prof[:,4],array_prof[:,2]))
+        
+        
+        clusters, y_pred=pcd.DBSCAN_pointcloud(x, min_samples=5, n_neig=3)
+        
+        mask=y_pred==-1
+        array_prof_corr=array_prof[~mask]
+        
+        array_prof_corr=np.vstack((array_min, array_prof_corr))
+        
+
+        nb_l=array_prof_corr.shape[0]
+        B=array_prof_corr[:,2][:, np.newaxis]
+        X=array_prof_corr[:,4]
+        
+        A=np.ones((nb_l,2))
+        A[:,0]=X
+
+        Qll=np.eye(nb_l, nb_l)
+
+        sigma_B=np.array(range(nb_l))[:, np.newaxis].astype(float)
+        sigma_B+=0.001
+        Qll=sigma_B*Qll
+        
+        inc, vi, wi, B_calc,s0, Quot=self.gauss_markov(Qll, A, B)
+        max_depth=np.max(X)
+        X_range=np.array(range(int(max_depth)))[:, np.newaxis]
+        a=np.ones((int(max_depth),1))
+        
+        A_range=np.column_stack((X_range, a))
+
+        res=A_range@inc
+
+        
+        plt.plot(x[:,0], x[:,1], '.', alpha=0.3)
+        plt.plot(X_range, res)
+        
+        plt.xlabel('Valeurs Depth IA', fontsize=12)
+        plt.ylabel('Valeurs terrain', fontsize=12)
+        # ax.plot(inc, B)
+        # plt.legend()
+        plt.title("Valeur des profondeurs IA et monoplotting")
+        plt.show()
+        plt.close()
+        
+        
+        self.depthmap_IA=self.depthmap_IA*inc[0,0]+inc[1,0]
+        
+        for i in dict_prof:
+            for j in dict_prof[i]:
+                self.dict_prof[i][j]["depthIA"]=float(inc[0,0]*self.dict_prof[i][j]["depthIA"]+inc[1,0])
     
     def creer_grille_point(self):
         width=self.depthmap_ajustee.shape[1]
@@ -655,7 +718,7 @@ class depthmap:
             
     
     
-    def creation_des_clusters(self, array_prof, view=False, first=False):
+    def creation_des_clusters(self, array_prof, index=0, view=False, first=False):
         list_clusters=[]
 
         if first==True:
@@ -670,12 +733,8 @@ class depthmap:
             unique_labels = np.unique(y_pred)
             
 
-
-        # mask_noise=y_pred==-1 
-        # colors = plt.cm.get_cmap("tab10", len(unique_labels))
-        # point_colors = np.array([colors(label)[:3] for label in y_pred]) 
-        # x_debruite=x[~mask_noise]
-        # pcd.view_point_cloud_from_array(np.delete(x_debruite, 3, axis=1), color=point_colors[~mask_noise])
+        # x_debruite, point_colors = pcd.array_et_colors_set_from_clusters(x, y_pred)
+        # pcd.view_point_cloud_from_array(np.delete(x_debruite, 3, axis=1), color=point_colors)
     
         
         for i in range(len(unique_labels)):
@@ -689,8 +748,8 @@ class depthmap:
                     # plot.plot_from_liste_prof(outlier.tolist())
                     
                     # print(f"Nbre de valeur en outlier {len(outlier)}")
-                    if len(outlier)>50:
-                        cluster=self.creation_des_clusters(array_cluster)
+                    if len(outlier)>50 and index<4:
+                        cluster=self.creation_des_clusters(array_cluster, index+1)
                         list_clusters=list_clusters+cluster
                     else:
                         # array_cluster=np.array(inliers)
@@ -718,7 +777,7 @@ class depthmap:
         print(f"Nbre de points {len(points_cluster_uv)}")
         print(f"FIN DU CALCUL DES CLUSTERS")
         print(f"--------------------------------------------------")
-        self.debug=np.array(points_cluster_uv)
+
 
         pcd.view_point_cloud_from_array(np.array(points_cluster_uv))
         # pcd.save_point_cloud_las(np.array(points_cluster_uv), "cluster.las")
@@ -789,12 +848,12 @@ class depthmap:
         Qll=1/sigma0**2*Kll
         inc, vi, wi, B_calc,s0, Quot=self.gauss_markov(Qll, A, B, robuste=False, print_res=True)
 
-        inc  = self.optimisation_quadratique(Qll,A, B)
+        # inc  = self.optimisation_quadratique(Qll,A, B)
         
         
         points_uv=[]
-        # if Quot<2.5:
-        if inc is not None:
+        if Quot<2.5:
+        # if inc is not None:
             self.param_transfo_cluster[str(cluster_index)]={"inc":inc, "quot": Quot, "enveloppe" : alpha_shape, "bounding_box": bounding_box_depthmap}
             fact=self.fact_reduce_depthajuste/self.fact_reduce_IA
             bounding_box=np.array([[np.min(cluster_array[:,0]), np.max(cluster_array[:,1])],[np.max(cluster_array[:,0]), np.min(cluster_array[:,1])]])
@@ -842,9 +901,10 @@ class depthmap:
         P=np.linalg.inv(Qll)
         Qxx=np.linalg.inv(A.T@P@A)
         inc=Qxx@A.T@P@B
-        vi=A@inc-B
-        # s0=1
-        s0=np.sqrt((vi.T@P@vi)/(nb_l-nb_i))
+        vi=A@inc-B+0.00000001
+
+        vitpvi=(vi.T@P@vi).astype(float)
+        s0=np.sqrt((vitpvi)/(nb_l-nb_i))
         
         
         if robuste:
@@ -894,12 +954,14 @@ class depthmap:
         G=np.zeros((1, nb_i+nb_l))
         G[0,1]=1
         g=np.zeros((nb_i+nb_l,1))
-        g[1,0]=-0.00000000000001
-
+        
+        # if self.IA_modele=="depthpro":
+        g[1,0]=+0.00000000000001
+        constraints = [H@x == h, G@x>=g]
         
         objective = cp.Minimize(1/2*cp.quad_form(x,F) + f.T @ x)
 
-        constraints = [H@x == h, G@x<=g]
+        
         #resolution du système
         prob = cp.Problem(objective, constraints)
         try:
@@ -922,28 +984,78 @@ class depthmap:
                         0.5 * residuals**2,
                         delta * (np.abs(residuals) - 0.5 * delta))
     
-    
-    def calcul_dist_ajustee(self):
+    def return_array_epurer_from(self, u_IA, v_IA):
+        
+        
+        uv_decalage=self.depthmap_IA.shape[1]//54
+
+        groupe_mesure = dict(list(self.dict_prof.items())[u_IA-uv_decalage:u_IA+uv_decalage])
+        liste_prof=self.dict_prof_TO_liste(groupe_mesure)
+        array_prof=np.array(liste_prof)
+        # plot.plot_from_liste_prof(liste_prof)
+        value_depth=self.depthmap_IA[v_IA,u_IA]
+        # print(f"Valeur depthIA: {value_depth}")
+
+        if array_prof.shape[0]< 5:
+            return None
+        
+        diff_depth=np.abs(array_prof[:,4][:, np.newaxis]-value_depth)
+
+        array_prof=np.append(array_prof,diff_depth, axis=1)
+
+        array_prof=tri_array_par_rapport_a_une_colonne(array_prof, 7)
+
+
+        mask_dist=array_prof[:,7]<1.5
+        array_prof_15dm=array_prof[mask_dist]
+        if array_prof_15dm.shape[0]< 5:
+            return None
+        array_test=array_prof_15dm[:,[2, 4]]
+        
+        clusters, y_pred=pcd.DBSCAN_pointcloud(array_test, min_samples=2, n_neig=4)
+        unique_label=np.unique(y_pred)
+
+        # x, color=pcd.array_et_colors_set_from_clusters(array_prof_15dm, y_pred)
+        # plt.scatter(x[:,2], x[:,4], c=color)
+        liste_label_include=[]
+        for i in unique_label:
+
+            if i!=-1:
+                
+                mask=y_pred==i
+                array_mask=array_test[mask]
+                if np.min(np.min(array_mask[:,0]))<1.5*value_depth:
+                    if np.min(array_mask[:,1])<value_depth and np.max(array_mask[:,1])>value_depth:
+                        liste_label_include.append(i)
+        
+        if len(liste_label_include)==1:
+            mask=y_pred==liste_label_include[0]
+            
+            if array_prof_15dm[mask].shape[0]>4:
+                array_res=array_prof_15dm[mask]
+                return array_res[:, [0,1,2,4]]
+
+        return None
+        
+        
+    def calcul_dist_ajustee(self, calcul_pt_homologue=True):
         sigma0=1
         grille=self.grille_calcul
         # grilless=self.dict_prof_TO_liste(self.dict_prof)
         grille_array=np.array(grille)
-        nb_l=len(grille)
+        
         fact=self.fact_reduce_depthajuste/self.fact_reduce_IA
-        B=grille_array[:,2][:, np.newaxis]
-        X=grille_array[:,3][:, np.newaxis]
+        
         u_liste=grille_array[:,0][:, np.newaxis]
         
         u_liste=u_liste.astype(int)
         v_liste=grille_array[:,1][:, np.newaxis]
         v_liste=v_liste.astype(int)
         uv_grille=np.hstack((u_liste, v_liste))
-        print(uv_grille)
-        A=np.ones((nb_l,3))
+
         
-        A[:,0]=u_liste[:,0]
-        A[:,1]=X[:,0]
-        self.debug= X
+
+        
         
         for v in range(self.depthmap_ajustee.shape[0]):
             for u in range(self.depthmap_ajustee.shape[1]):
@@ -953,46 +1065,101 @@ class depthmap:
                     [u, v],
                     ])
                 depth_IA_value=self.depthmap_IA[v_IA, u_IA]
+                
+                depth_IA_value_origine=self.depthmap_IA_backup[v_IA, u_IA]
+                
                 depthmap_ajustee_value= self.depthmap_ajustee[v, u]
                 if depthmap_ajustee_value<=0:
                     
-                    if depth_IA_value==0:
+                    if depth_IA_value_origine==0:
                         value_calc=9999
                     else:
-                        Kll=np.eye(nb_l)
-                        
-                        #calcul précision selon la distance à l'UV
-                        diff_uv=uv_grille-uv_array
-                        dist_grille_uv=diff_uv@diff_uv.T
-                        dist_grille_uv = np.diagonal(dist_grille_uv)
-                        dist_grille_uv = dist_grille_uv[:, np.newaxis]**0.5
-                        dist_grille_uv=np.abs(u_liste-u)
-                        y_uv=(1.6**dist_grille_uv**0.52)/200+0.1
-                        
-                        # y_uv=0
-                
-                        
-                        
-                        diff_depthvalue=np.abs(X-depth_IA_value)
-                        
-                        # y_depth=(1.65**diff_depthvalue**0.63)/200+0.1
-                        y_depth=(1.5**diff_depthvalue**0.8)/200+0.1
-                        # y_depth=1
-                        
-                        Qll=Kll*(y_depth+y_uv+0.00001)
-                        
+                        depth_calc=None
+                        if calcul_pt_homologue:
+                            profondeur_valeur = self.return_array_epurer_from(u_IA, v_IA)
+                            
+                            if profondeur_valeur is not None:
+                                nb_l=profondeur_valeur.shape[0]
+                                B=profondeur_valeur[:,2][:, np.newaxis].astype(float)
+                                X=profondeur_valeur[:,3][:, np.newaxis].astype(float)
+                                
+                                A=np.ones((nb_l,2))
+                                A[:,0]=X[:,0]
+                                Qll=np.eye(nb_l)*0.1
+                                inc, vi, wi, B_calc,s0, Quot=self.gauss_markov(Qll, A, B)
+                                
+                                X_range=np.array(range(int(np.min(X)),int(np.max(X))+1))[:, np.newaxis]
+                                a=np.ones((int(np.max(X))+1-int(np.min(X)),1))
+                                
+                                A_range=np.column_stack((X_range, a))
+                                res=A_range@inc
 
-                        inc, vi, wi, B_calc,s0, Quot=self.gauss_markov(Qll, A, B)
+                            
+                                
+                                if Quot<2:
+                                    depth_calc=inc[0,0]*depth_IA_value+inc[1,0]
+                                    plt.plot(X_range, res)
+                                    plt.plot(X[:,0], B[:,0], '.', c="green", alpha=0.3)
+                                    plt.show()
+                                    plt.close()
+                                    
+                                else:
+                                    print(f"Le calcul de gauss-markov n'est rend pas un résultat juste avec un quotien de {Quot} et un vi maximum de {np.max(vi)} et un wi max de {np.max(wi)}")
+                                    
+                                    plt.plot(X[:,0], B[:,0], '.', c="red", alpha=0.3)
+                                    plt.plot(X_range, res)
+                                    plt.show()
+                                    plt.close()
+                                    
+                        else:
+                            diff_uv=uv_grille-uv_array
+                            dist_grille_uv=diff_uv@diff_uv.T
+                            dist_grille_uv = np.diagonal(dist_grille_uv)
+                            dist_grille_uv = dist_grille_uv**0.5
+                            
+                            indice_grille=dist_grille_uv<self.depthmap_ajustee.shape[1]//2
+                            
+                            profondeur_valeur=grille_array[indice_grille]
+    
+                                
+                            nb_l=profondeur_valeur.shape[0]
+                            B=profondeur_valeur[:,2][:, np.newaxis].astype(float)
+                            X=profondeur_valeur[:,3][:, np.newaxis].astype(float)
+                            
+                            u_liste_epurer=profondeur_valeur[:,0][:, np.newaxis]
+    
+                            A=np.ones((nb_l,3))
+                            A[:,0]=u_liste_epurer[:,0]
+                            A[:,1]=X[:,0]
+                            Kll=np.eye(nb_l)
+    
+                            
+                            dist_grille_uv=np.abs(u_liste_epurer-u)
+                            y_uv=(1.6**dist_grille_uv**0.52)/200+0.1
+                            
+    
+                            diff_depthvalue=np.abs(X-depth_IA_value)
+                            
+                            # y_depth=(1.65**diff_depthvalue**0.63)/200+0.1
+                            y_depth=diff_depthvalue**5/50+0.1
+                            # y_depth=1
+                            
+                            Qll=Kll*(y_depth+y_uv+0.00001)
+                            Qll=np.asarray(Qll, dtype=np.float64) #Corriger pour avoir du float
+    
+                            inc, vi, wi, B_calc,s0, Quot=self.gauss_markov(Qll, A, B)
                         
-                        depth_calc=inc[0,0]*u+inc[1,0]*depth_IA_value+inc[2,0]
-                        self.depthmap_ajustee[v, u]=depth_calc
+                            depth_calc=inc[0,0]*u+inc[1,0]*depth_IA_value+inc[2,0]
+                            
+                        if depth_calc is not None:
+                            self.depthmap_ajustee[v, u]=float(depth_calc)
                         
                         
                         
                 # self.calcul_dist_ajust_from_uv(uv_array, 300,400)
                 if v%50==0 and u%50==0:
                     print(f"Les éléments ont été calculés jusqu' à l'uv {u} {v}")
-        self.debug= Qll
+
         print("Les depthmap ajustées est entièrement calculée")
     
     def calcul_dist_ajust_from_uv(self, uv_array, IA_normalisation, Dist_normalisation):
@@ -1182,6 +1349,7 @@ class depthmap:
                     points.append(self.camera.uv_to_M_by_dist_prof(self.photoname, uv, d_proj))
 
         pcd.save_point_cloud_las(np.array(points), pointcloud_name+".las")
+        return points
         
     def save_image_depthmap(self, depthmap, image_name):
         image=Image.fromarray(depthmap)
@@ -1248,7 +1416,7 @@ class depthmap:
         self.save_image_depthmap(self.depthmap_ajustee, "resultat")
             
     def tranformation_depthanything_gauss(self, liste_prof, rob=4, nbre_inc=5):
-        print(liste_prof)
+        # print(liste_prof)
         print(f"calcul de gauss-markov")
         nbre_valeur=100
         nb_i=nbre_inc
@@ -1369,7 +1537,7 @@ class depthmap:
         
         return liste_ajustee_RANSAC, liste_supprimee_RANSAC
 
-def tri_array_par_rapport_a_une_colonne(self, array, colonne):
+def tri_array_par_rapport_a_une_colonne(array, colonne):
     liste_prof_array_tri = array[array[:, colonne].argsort()]
     return liste_prof_array_tri
 
