@@ -34,8 +34,14 @@ def readlas_to_numpy(path):
     # Extraire les coordonnées des points x, y, z
 
     point_cloud = np.vstack((las.x, las.y, las.z)).transpose()
-    normal_pcd = np.vstack((las.points["normal x"], las.points["normal y"], las.points["normal z"])).transpose()
-    normal_rgb = np.vstack((las.points["red"], las.points["green"], las.points["blue"])).transpose()
+    try:
+        normal_pcd = np.vstack((las.points["normal x"], las.points["normal y"], las.points["normal z"])).transpose()
+    except:
+        
+        normal_pcd= np.ones((point_cloud.shape[0],3))
+        normal_pcd[:,0]=0
+        normal_pcd[:,1]=0
+    # normal_rgb = np.vstack((las.points["red"], las.points["green"], las.points["blue"])).transpose()
     
     
 
@@ -320,43 +326,50 @@ def DBSCAN_pointcloud(point_cloud, min_samples=10, n_neig=2):
     return clusters, y_pred
     
 
-def KMEANS_pointcloud(array, interie_fact=0.1):
+def KMEANS_pointcloud(array, interie_fact=0.1, n_cluster=None):
     X=array
     inertias = []
     diff=[]
-    for i in range(1,9):
-        kmeans = KMeans(n_clusters=i)
-        kmeans.fit(X)
-        inertias.append(kmeans.inertia_)
-    n=0
-    for i in range(len(inertias)):
-        if i == len(inertias)-2:
-            n=i
-            break
-        a=np.array([i+1, inertias[i+1]])
-        b=np.array([i, inertias[i]])
-        PS=a-b
-        N=np.array([inertias[i+2]-inertias[i], i+2-i])
-        norm_N=np.linalg.norm(N)
-        norm_PS=np.linalg.norm(PS)
-        norm_proj=np.abs((PS@N)/(norm_PS*norm_N)*norm_PS)
-        
-        if norm_proj>interie_fact*norm_N:
-            n=i
-            break
+    if n_cluster is None:
+        for i in range(1,9):
+            kmeans = KMeans(n_clusters=i)
+            kmeans.fit(X)
+            inertias.append(kmeans.inertia_)
+        n=0
+        for i in range(len(inertias)):
+            if i == len(inertias)-2:
+                n=i
+                break
+            a=np.array([i+1, inertias[i+1]])
+            b=np.array([i, inertias[i]])
+            PS=a-b
+            N=np.array([inertias[i+2]-inertias[i], i+2-i])
+            norm_N=np.linalg.norm(N)
+            norm_PS=np.linalg.norm(PS)
+            norm_proj=np.abs((PS@N)/(norm_PS*norm_N)*norm_PS)
+            
+            if norm_proj>interie_fact*norm_N:
+                n=i
+                break
+    else:
+        i=n_cluster
     kmeans = KMeans(n_clusters=i)
     kmeans.fit(X)
     y_pred=kmeans.labels_
     unique_clusters = np.unique(y_pred)
+    
     clusters = [X[y_pred == cluster_id] for cluster_id in unique_clusters]
     return clusters, y_pred
 
 
-def HDBSCAN_pointcloud(point_cloud):
+def HDBSCAN_pointcloud(point_cloud, min_sample=1):
     X=point_cloud
 
-    hdb = HDBSCAN(min_samples=1).fit(X)
+    hdb = HDBSCAN(min_samples=min_sample).fit(X)
+    
     y_pred=hdb.labels_
+
+
     # plot(X, hdb.labels_, hdb.probabilities_)
     unique_clusters = np.unique(y_pred)
 

@@ -65,7 +65,7 @@ def plot_mesure_calcule(val_x, val_mesure, val_calcul, title, x_dep=None, y_dep=
     plt.show()
     plt.close()
     
-def plot_from_liste_prof(liste_prof):
+def plot_from_liste_prof(liste_prof, title="Valeur des profondeurs IA et monoplotting", equal=False):
     x=[]
     y=[]
     for mesure in liste_prof:
@@ -76,11 +76,11 @@ def plot_from_liste_prof(liste_prof):
     ax.plot(x, y, '.', alpha=0.3)
 
     
-    plt.xlabel('Valeurs Depth IA', fontsize=12)
-    plt.ylabel('Valeurs terrain', fontsize=12)
-    # ax.plot(inc, B)
-    # plt.legend()
-    plt.title("Valeur des profondeurs IA et monoplotting")
+    plt.xlabel('Valeurs Depth transformées (approx.)', fontsize=12)
+    plt.ylabel('Valeurs terrain (dproj)', fontsize=12)
+    if equal:
+        ax.set_aspect('equal')
+    plt.title(title)
     plt.show()
     plt.close()
     
@@ -92,7 +92,16 @@ def check_is_array_to_list(arrayliste):
         return arrayliste.flatten().tolist()
     
     
-
+def plot_cluster(X, labels):
+    unique_labels = np.unique(labels)
+    print(unique_labels)
+    for i in range(len(unique_labels)):
+    # Extraire les points appartenant au cluster i
+        cluster_points = X[labels == i]
+        plt.plot(cluster_points[:, 0], cluster_points[:, 1], 'o', label=f'Cluster {i+1}')
+        
+    plt.show()
+    plt.close()
 
 
 def input_10_wi_to_image(path_image, liste_uv_obs, val_mesure, val_calcul, wi, nb_wi=10):
@@ -132,4 +141,20 @@ def input_10_wi_to_image(path_image, liste_uv_obs, val_mesure, val_calcul, wi, n
         draw.text((u, v), "Obs:"+"{:.1f}".format(val_mesure[index,0])+"/"+"C:"+"{:.1f}".format(val_calcul[index,0]), font=font, fill=(0, 0, 0))
     
     
+    image_origine.show()
+    
+def show_point_in_image(pathimage, uv):
+    image_origine=Image.open(pathimage)
+    draw = ImageDraw.Draw(image_origine)
+    for i in range(uv.shape[0]):
+        u=uv[i,0]
+        v=uv[i,1]
+        centre = (u, v)
+        rayon = 5
+        largeur_bordure = 1 
+        draw.ellipse(
+            [centre[0] - rayon, centre[1] - rayon, centre[0] + rayon, centre[1] + rayon],
+            outline="red",   # Couleur de la bordure
+            width=largeur_bordure  # Largeur de la bordure
+        )
     image_origine.show()
