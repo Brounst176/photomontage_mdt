@@ -1,0 +1,105 @@
+#menu{
+    border-radius: 25px 0 0 25px;
+}
+
+body, html{
+    background-color: darkgrey;
+    font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif
+}
+html{
+    padding:50px
+}
+#map{
+    height: 100%;
+    min-width: 500px;
+    min-height: 500px;
+    max-height: 500px;
+    width:calc(100% - 520px);
+}
+.backgroundopacity{
+  position: relative;
+  overflow: hidden; /* optionnel */
+  z-index: 0;
+  display: flex;
+}
+.backgroundopacity::before{
+  background-image: url("../image/image_montage_titre.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+   opacity: 0.3; /* <-- ici tu règles l'opacité de l'image */
+  z-index: -1;
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+#accueil{
+    height: 100%;
+    margin: auto;
+    font-size: 25px;
+    padding: 50px;
+    text-align: center;
+    font-weight: bold;
+    text-shadow:
+    -4px -4px 4px rgba(205, 205, 205, 0.6),
+     4px -4px 4px rgba(238, 238, 238, 0.6),
+    -4px  4px 4px rgba(255, 255, 255, 0.6),
+     4px  4px 4px rgba(218, 218, 218, 0.6);
+}
+@media (min-width: 1200px) {
+body, html{
+    height: 100%;
+}
+}
+@media (max-width: 1200px) {
+    #map {
+        height: 500px;
+        width: 100%;
+    }
+    body, html{
+        min-height: 100%;
+    }
+}
+footer{
+    background-color: rgb(33, 37, 41);
+    color: #ffffff;
+    padding: 25px;
+}
+button{
+    background-color: #333;
+    color: #eee;
+    padding: 10px 20px;
+    border: None;
+    font-size: 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    box-shadow : 0 2px 5px rgba(0,0,0,0.5);
+}
+button:hover{
+    background-color: #555
+}
+.projet_li:hover{
+    color:#7b0a0a;
+    cursor: pointer;
+}
+.projet_li.active {
+    text-decoration: underline;
+}
+
+
+#button_ouvrerture{
+  background-color: #333;       /* gris anthracite sombre */
+  color: #eee;                  /* texte clair */
+  border: none;
+  padding: 10px 20px;
+  font-size: 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+}
+
+#button_ouvrerture:hover {
+  background-color: #555;       /* gris un peu plus clair au survol */
+}

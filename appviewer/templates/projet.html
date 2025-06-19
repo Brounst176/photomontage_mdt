@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil{% endblock %}
+
+{% block content %}
+     <div style="display:flex; justify-content: space-between; padding: 20px;height: 100%;flex-wrap: wrap;width: 100%;">
+          <div id="liste_projet" style="max-width: 500px;margin-right: 10px;">
+               <h3>Projet : {{projetname}}</h3>
+               <img src="../images_projet/{{projetname}}" width="500">
+               <div style="padding-top:20px;margin-top:20px;border-top: 3px solid #2b3035;">
+               <h5>Formulaire de création de photomonage</h5>
+               <div class="mb-3">
+
+                    <label for="formFile" class="form-label">Importer une image</label>
+                    <input class="form-control" id="imageInput" type="file" id="formFile" accept=".jpg,.jpeg,.png">
+                    <label for="coordimage" style="margin-top: 25px;"  class="form-label">Coordonnées MN95 de la position de la photo <br>
+  <em>(cliquer sur la carte pour indiquer la position de la photo si cela n'a pas été détecté lors de l'import de l'image)</em></label>
+                    <input class="form-control" type="text" id="coordimage" value="" aria-label="readonly input example" readonly disabled>
+               </div>
+               <div style="display: flex; justify-content: center;margin-top: 20px;margin-bottom: 20px;">
+                    <button>Calculer le photomontage</button>
+
+               </div>    
+
+          </div></div>
+          <div id="map"></div>
+     </div>
+<script type="text/javascript">
+const projetname="{{projetname}}";
+var east_image=null;
+var north_image=null;
+</script>
+<script src="{{ url_for('static', filename='js/map.js') }}"></script>
+<script src="{{ url_for('static', filename='js/projet.js') }}"></script>
+{% endblock %}

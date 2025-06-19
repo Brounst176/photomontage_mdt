@@ -7,8 +7,8 @@ Created on Wed Mar 12 08:36:23 2025
 
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+from matplotlib.colors import ListedColormap, BoundaryNorm
 # Fonction pour créer et mettre à jour l'histogramme
 def plot_histogram(values, interval=10, title="titre"):
     """
@@ -143,18 +143,70 @@ def input_10_wi_to_image(path_image, liste_uv_obs, val_mesure, val_calcul, wi, n
     
     image_origine.show()
     
-def show_point_in_image(pathimage, uv):
-    image_origine=Image.open(pathimage)
-    draw = ImageDraw.Draw(image_origine)
-    for i in range(uv.shape[0]):
-        u=uv[i,0]
-        v=uv[i,1]
-        centre = (u, v)
-        rayon = 5
-        largeur_bordure = 1 
-        draw.ellipse(
-            [centre[0] - rayon, centre[1] - rayon, centre[0] + rayon, centre[1] + rayon],
-            outline="red",   # Couleur de la bordure
-            width=largeur_bordure  # Largeur de la bordure
-        )
-    image_origine.show()
+def show_point_in_image(pathimage, uv , corresp=None):
+    img=Image.open(pathimage)
+    max_size = 650
+    w, h = img.size
+    scale = min(max_size / w, max_size / h)
+    new_size = (int(w * scale), int(h * scale))
+    # image_origine.show()
+    img = img.resize(new_size, Image.LANCZOS)
+    
+    enhancer = ImageEnhance.Color(img)
+    img = enhancer.enhance(0.3)
+    
+    img_array=np.asarray(img)
+    fig, ax = plt.subplots()
+    ax.imshow(img_array)
+    ax.axis('off') 
+    
+    if corresp is None:
+        corresp = np.ones((uv.shape[0],))*2
+    
+    cmap = ListedColormap(['blue', 'lime', 'orange', 'red'])  # 2, 3, 4
+    bounds = [0.5,1.5, 2.5, 3.5, 4.5]  # bornes entre les valeurs
+    norm = BoundaryNorm(bounds, cmap.N)
+    
+    u=uv[:,0]*scale
+    v=uv[:,1]*scale
+    centre = (u, v)
+    rayon = 5
+    largeur_bordure = 1 
+    
+    sc=ax.scatter(u, v, c=corresp, cmap=cmap, vmin=1, vmax=5,s=10, linewidths=0, alpha=0.8)
+    cbar = plt.colorbar(sc, ticks=[1,2, 3, 4])
+    cbar.ax.set_yticklabels(['1','2', '3', '4'])
+    # plt.gca().invert_yaxis()
+    
+    
+def show_only_point_in_image(pathimage, uv , uv_out=None):
+    img=Image.open(pathimage)
+    max_size = 650
+    w, h = img.size
+    scale = min(max_size / w, max_size / h)
+    new_size = (int(w * scale), int(h * scale))
+    # image_origine.show()
+    img = img.resize(new_size, Image.LANCZOS)
+    
+    enhancer = ImageEnhance.Color(img)
+    img = enhancer.enhance(0.3)
+    
+    img_array=np.asarray(img)
+    fig, ax = plt.subplots()
+    ax.imshow(img_array)
+    ax.axis('off') 
+
+    
+    u=uv[:,0]*scale
+    v=uv[:,1]*scale
+    centre = (u, v)
+    rayon = 5
+    largeur_bordure = 1 
+    
+    sc=ax.scatter(u, v, c="lime", alpha=0.8, label="Points avec un wi inférieur à 2.5")
+    # if uv_out is not None and uv_out.shape[0]>0:
+    #     u_out=uv_out[:,0]*scale
+    #     v_out=uv_out[:,1]*scale
+    #     scout=ax.scatter(u_out, v_out, c="red", alpha=0.8, label="Points avec un wi supérieur à 2.5")
+    # plt.legend(loc="lower left")
+

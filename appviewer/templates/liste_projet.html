@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil{% endblock %}
+
+{% block content %}
+     <div style="display:flex; justify-content: space-between; padding: 20px;height: 100%;flex-wrap: wrap;width: 100%;">
+          <div id="liste_projet" style="max-width: 500px;margin-right: 10px;">
+               <h3>Liste des projets</h3>
+               <ul>
+                    {% for key, data in projets.items() %}
+                         <li class="projet_li" id="{{ key }}">
+                              <strong>{{ key }}</strong> : {{ data.objet }}
+                         </li>
+                    {% endfor %}
+               </ul>
+               <div id="projet_detail" style="margin-top:50px">
+                      
+               </div>
+
+          </div>
+          <div id="map"></div>
+     </div>
+<script src="{{ url_for('static', filename='js/map.js') }}"></script>
+<script src="{{ url_for('static', filename='js/liste_projet.js') }}"></script>
+{% endblock %}

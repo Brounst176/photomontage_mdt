@@ -96,6 +96,40 @@ def distorsion_frame_brown_agisoft_from_xy(x, y, k1,k2,k3,k4,p1,p2,b1,b2, w, h,c
     return uv
 
 @njit
+def init_calcul_intersection(boundaries, fact_reduce_depthajuste :np.float64,S,R, k1,k2,k3,k4,p1,p2,b1,b2, w, h,cx,cy,f):
+    pixel_coords = []
+    directions_list = []
+    closest_rays = {}
+    for v in range(boundaries[1,0],boundaries[1,1]):
+        for u in  range(boundaries[0,0],boundaries[0,1]):
+            uv=np.array([u/fact_reduce_depthajuste,v/fact_reduce_depthajuste], dtype=np.float64)
+            M,vect = uv_to_M_by_dist_prof(S,R, uv, 25.0, k1,k2,k3,k4,p1,p2,b1,b2, w, h,cx,cy,f)
+            vect = vect / np.linalg.norm(vect)
+            directions_list.append(vect)
+            pixel_coords.append((v, u))
+            vect = vect / np.linalg.norm(vect)
+            closest_rays[(v, u)] = {'vect': vect}
+            
+    return pixel_coords, directions_list, closest_rays
+
+@njit
+def prep_donnee_intersection(locs, ray_ids, tri_ids, origins, directions_list):
+    
+
+    # locs, ray_ids, tri_ids = mesh.ray.intersects_location(origins, directions)
+
+    deltas = locs - origins[ray_ids]
+    distances2 = (deltas * deltas).sum(axis=1)
+    closest_dist = np.full(len(directions_list), np.inf)
+    closest_hit_idx = np.full(len(directions_list), -1, dtype=np.int32)
+
+    for i in range(len(ray_ids)):
+        r_id = ray_ids[i]
+        if distances2[i] < closest_dist[r_id]:
+            closest_dist[r_id] = distances2[i]
+            closest_hit_idx[r_id] = i
+    return closest_dist, closest_hit_idx
+@njit
 def calcul_proj_cam(S, R, M):
     """
     Cette fonction calcule le distance de projection d'un point et le coordonnée projetée'

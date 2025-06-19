@@ -13,51 +13,6 @@ import math as m
 # %%
 
 
-#Points sur la maison devant
-M=np.array([
-    2528510.114,
-    1159666.963,
-    511.78
-    ])
-#Points sur terrainde pétanque
-M=np.array([
-     2528500.692,
-     1159665.769,
-     510.55
-     ])
-#Points 3
-M=np.array([
-     2528510.323,
-     1159666.941,
-     511.75
-     ])
-# Fenetre bas
-M=np.array([
-     2528603.686,
-     1159679.230,
-     510.20
-     ])
-#Faite simone
-# M=np.array([
-#      2528524.957,
-#      1159666.411,
-#      518.316
-#      ])
-#fenetre simone
-# M=np.array([
-#      2528522.8052,
-#      1159668.8328,
-#      511.6924
-#      ])
-M=np.array([
-     2528498.680,
-     1159656.870,
-     508.510
-     ])
-M=np.array([2528528.609711709, 1159666.3519212431, 512.8080390118347])
-
-
-
 
 
 
@@ -74,78 +29,41 @@ class projet_photomontage:
 
 
 
-fichier_path = 'Input/calibration/nikon_simone.txt'
+
 
 
 pathlas="C:/Users/Bruno/Documents/TM_script/Terrain/point_homologue.las"
 pathlas="Input/point_dense_reduce.las"
 pathlidar="Input/lidar.las"
-pathimage="Input/image"
-pathprojet="Input"
-photoname="_DSC6987.JPG"
+pathimage="data_projet/heig/image"
+pathprojet="data_projet/heig"
+images_principales="_DSC7922.JPG"
 nikon=cm.camera("foldernotexite")
-nikon.import_calib("nikonD7500", "Input/calibration/nikon_simone.xml")
-nikon.import_image_from_omega_phi_kappa_file(fichier_path)
+nikon.import_calib("nikon_d7500_17mm", pathprojet+"/nikon_d7500_17mm.xml")
+nikon.import_image_from_omega_phi_kappa_file(pathprojet+"/position_orientation.txt")
 images=nikon.images
 
 
-images_principales="_DSC7005.JPG"
 
-
-start_time = time.time()
-print(start_time)
-homol=lg.homol_IA(images_principales, np.array([2528510.74, 1159641.0]), nikon, pathprojet)
+homol=lg.homol_IA(images_principales, np.array([2540583, 1181278]), nikon, pathprojet)
 proche=homol.trouver_cameras_proches_numpy(n=10)
 liste_homol=homol.first_feats_matches_calc(2500)
-end_time = time.time()
-print(end_time)
-elapsed_time = end_time - start_time
-print(f"Durée d'exécution de calcul de Clusters : {elapsed_time:.2f} secondes")
+
 
 # %%
 # CALCUL DE LA SUITE DES IMAGES HOMOLOGUES
-
-
-# dict_homol_filtre, array_homol_tri=homol.feats_analyse()
-# i=20
-# while array_homol_tri[array_homol_tri[:,4]>3].shape[0]<5:
-#     liste_homol=homol.homol_array
-#     image_M=liste_homol[np.argmax(liste_homol[:, 1]),0]
-    
-#     image_priorite = homol.projetcamera.liste_image_direction_proximite(image_M,np.array(homol.image_traitee))
-#     for i in range(5):
-#         homol.feats_calcul(homol.feats_cible, image_priorite[i,0],2500)
-        
-#     dict_homol_filtre, array_homol_tri=homol.feats_analyse()
-
-
 dict_homol_filtre, array_homol_tri=homol.calcul_iteratif_homol_matches()
 # %%
 # plot.show_point_in_image( os.path.join(pathprojet,"image/_DSC7015.JPG"), array_homol_tri[:, [1,2]], array_homol_tri[:, 4])
 
 dict_valide,dict_supprimer= homol.calcul_approximatif_homol_3D(dict_homol_filtre)
-homol.show_matches_paires(dict_valide, "_DSC7002.JPG", images_principales)
+homol.show_matches_paires(dict_valide, "_DSC7923.JPG", images_principales)
 # homol.show_matches_paires(dict_valide, "_DSC6962.JPG", "_DSC7014.JPG")
 # homol.show_matches_paires(dict_supprimer, "_DSC6961.JPG")
 # %%
 homol.proj_points_3D_dict_to_image()
 dict_valide=homol.dict_homol
 homol.RANSAC_DLT(k=200, n_samples=15)
-# R=homol.R
-# print("données mesurée")
-# print(R)
-
-# Supposons que vous avez R bruitée
-# U, _, Vt = np.linalg.svd(R)
-# R_ortho = U @ Vt
-
-# Vérifier et corriger si det = -1 (reflection)
-# if np.linalg.det(R_ortho) < 0:
-#     U[:, -1] *= -1
-#     R_ortho = U @ Vt
-# r =  Rot.from_matrix(R)
-# angles = r.as_euler("xyz",degrees=True)
-# print(angles)
 
 print("données réel")
 R=nikon.images[images_principales]["R"]
@@ -153,10 +71,8 @@ print(R)
 r =  Rot.from_matrix(R)
 angles = r.as_euler("xyz",degrees=True)
 
-# # # r_retour = Rot.from_euler('xyz', angles, degrees=True)
-# # # # print(r_retour.as_matrix())
 print(angles)
-# homol.DLT_image_cible()
+
 
 
 #%%
@@ -164,6 +80,49 @@ if abs(homol.cx)>500 or abs(homol.cy)>500:
     P=homol.RANSAC_DLT_rot()
     P=homol.RANSAC_DLT_foc()
 # P=homol.RANSAC_DLT_rot()
+#%%
+dict_test = dict_valide.copy()
+for key in dict_valide:
+    if dict_valide[key]["u"]> 3600 and dict_valide[key]["v"]> 1200:
+        print("ok")
+    else:
+        del dict_test[key]
+
+homol.distorsion_nulle()
+
+Qxx, x, A, dx, B, dl, wi, vi = homol.calcul_moindre_carre_non_lineaire(dict_test)
+
+
+indices_trie = np.argsort(np.abs(wi)[:,0])
+
+
+# Les 5 plus grandes => les 5 derniers (à l'envers)
+indices_top5 = indices_trie[-5:][::-1]
+uv=[]
+uv_out=[]
+uv_faux=[]
+nb_obs=wi.shape[0]//2
+
+       
+
+for i in range(wi.shape[0]//2):
+    
+    if abs(wi[i, 0])>3.0 or abs(wi[i+nb_obs, 0])>3.0:
+            uv_out.append([B[i,0],B[i+nb_obs,0]])
+            uv_faux.append(str(B[i,0])+"_"+str(B[i+nb_obs,0]))
+    else:
+            uv.append([B[i,0],B[i+nb_obs,0]])
+        
+plot.show_only_point_in_image(pathimage+"/"+images_principales, np.array(uv), np.array(uv_out))
+print("Valeurs correspondantes :", wi[indices_top5])
+
+
+
+liste_inc=["S", "angles", "f", "cx", "cy", "k1", "k2"]
+
+Qxx, x, A, dx, B, dl, wi, vi  =  homol.calcul_moindre_carre_non_lineaire(dict_test, uv_faux, liste_inc)
+
+    
 #%%
 homol.distorsion_nulle()
 
@@ -180,10 +139,7 @@ uv_out=[]
 uv_faux=[]
 nb_obs=wi.shape[0]//2
 
-# if max(abs(wi[indices_top5]))>3:
-#     if min(abs(wi[indices_top5]))>3:
-#         delta=
-        
+       
 
 for i in range(wi.shape[0]//2):
     
@@ -193,25 +149,53 @@ for i in range(wi.shape[0]//2):
     else:
             uv.append([B[i,0],B[i+nb_obs,0]])
         
-plot.show_only_point_in_image("Input/image/"+images_principales, np.array(uv), np.array(uv_out))
-# print("Indices des 5 plus grandes valeurs :", indices_top5)
+plot.show_only_point_in_image(pathimage+"/"+images_principales, np.array(uv), np.array(uv_out))
 print("Valeurs correspondantes :", wi[indices_top5])
 
-# Qxx, x, A, dx, B, dl, wi, vi = homol.calcul_moindre_carre_non_lineaire(dict_valide, uv_faux)
-# nb_obs=wi.shape[0]//2
-# for i in range(wi.shape[0]//2):
-    
-#     if abs(wi[i, 0])>3.0 or abs(wi[i+nb_obs, 0])>3.0:
-#             uv_out.append([B[i,0],B[i+nb_obs,0]])
-#             uv_faux.append(str(B[i,0])+"_"+str(B[i+nb_obs,0]))
-#     else:
-#             uv.append([B[i,0],B[i+nb_obs,0]])
-        
-# plot.show_only_point_in_image("Input/image/"+images_principales, np.array(uv), np.array(uv_out))
 
-liste_inc=["S", "angles", "f", "cx", "cy", "k1", "k2","p1"]
+
+liste_inc=["S", "angles", "f", "cx", "cy", "k1", "k2"]
 
 Qxx, x, A, dx, B, dl, wi, vi  =  homol.calcul_moindre_carre_non_lineaire(dict_valide, uv_faux, liste_inc)
+
+
+
+#%% CALCUL PROJECTION GCP
+pt_10=np.array([
+    2540579.407,1181267.245,445.953
+    ])
+
+pt_13=np.array([
+    2540579.393,1181267.248,450.437
+    ])
+
+pt_53=np.array([
+    2540572.183,1181276.415,450.351
+    ])
+pt_50=np.array([
+    2540572.182,1181276.41,445.928
+    ])
+pt_20=np.array([
+    2540575.184,1181266.592,446.137
+    ])
+pt_40=np.array([
+    2540570.769,1181272.204,446.204
+    ])
+pt_33=np.array([
+    2540575.755,1181271.879,450.29
+    ])
+
+image_calc=cm.camera("foldernot")
+image_calc.import_from_homol(homol)
+
+m_pt10=nikon.M_to_uv(homol.imagepath, pt_10)
+m_pt13=nikon.M_to_uv(homol.imagepath, pt_13)
+m_pt53=nikon.M_to_uv(homol.imagepath, pt_53)
+m_pt50=nikon.M_to_uv(homol.imagepath, pt_50)
+m_pt20=nikon.M_to_uv(homol.imagepath, pt_20)
+m_pt40=nikon.M_to_uv(homol.imagepath, pt_40)
+m_pt33=nikon.M_to_uv(homol.imagepath, pt_33)
+
 
 
 

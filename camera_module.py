@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import Ellipse
 import math
-from PIL import Image  
+from PIL import Image 
+import copy 
 # from scipy.spatial import cKDTree
 # import open3d as o3d;
 # from sklearn import datasets, linear_model
@@ -21,10 +22,10 @@ from sklearn.preprocessing import PolynomialFeatures
 # from sklearn.metrics import r2_score
 # from scipy.spatial import ConvexHull
 # from sklearn.cluster import DBSCAN, HDBSCAN, KMeans
-import cvxpy as cp
+# import cvxpy as cp
 import alphashape 
 import numpy as np
-
+from tqdm import tqdm
 from shapely.geometry import Point
 from scipy.stats import chi2, norm
 import xml.etree.ElementTree as ET
@@ -38,8 +39,11 @@ import pointcloud_module as pcd
 import fonction_optimisee_numba as jit_fct
 import time
 
+
+
+
 class camera:
-    def __init__(self, name="", images_pathfolder="", w=0, h=0, cx=0, cy=0, f=0, k1=0, k2=0, k3=0, k4=0, p1=0, p2=0, b1=0, b2=0):
+    def __init__(self, images_pathfolder=""):
         """
         Initialiser les paramètres de la caméra avec des valeurs par défaut (0).
         
@@ -53,21 +57,21 @@ class camera:
         :param w: largeur pixel de l'image
         :param h: hauteur pixel de l'image
         """
-        self.cx = cx
-        self.cy = cy
-        self.f = f
-        self.k1 = k1
-        self.k2 = k2
-        self.k3 = k3
-        self.k4 = k4
-        self.p1 = p1
-        self.p2 = p2
-        self.b1 = b1
-        self.b2 = b2
-        self.name =name
+        self.calibrations = {}
+        self.cx = 0
+        self.cy = 0
+        self.f = 0
+        self.k1 = 0
+        self.k2 = 0
+        self.k3 = 0
+        self.k4 = 0
+        self.p1 = 0
+        self.p2 = 0
+        self.b1 = 0
+        self.b2 = 0
         self.images_pathfolder = images_pathfolder
-        self.w = w
-        self.h = h
+        self.w = 0
+        self.h = 0
         self.images = {}
         self.debug=""
 
@@ -77,8 +81,30 @@ class camera:
         """
         return (f"Camera(cx={self.cx}, cy={self.cy}, f={self.f}, k1={self.k1}, k2={self.k2}, "
                 f"k3={self.k3}, k4={self.k4}, p1={self.p1}, p2={self.p2}, b1={self.b1}, b2={self.b2})")
-
-    def import_calib(self, path_agisoft_calib):
+    
+    
+    def import_from_homol(self, homol):
+        self.cx = homol.cx
+        self.cy = homol.cy
+        self.f  = homol.f 
+        self.k1 = homol.k1
+        self.k2 = homol.k2
+        self.k3 = homol.k3
+        self.k4 = homol.k4
+        self.p1 = homol.p1
+        self.p2 = homol.p2
+        self.b1 = homol.b1
+        self.b2 = homol.b2
+        self.w  = homol.w 
+        self.h  = homol.h 
+        
+        self.calibrations["image_use"]={"w" : self.w, "h":self.h,"cx":self.cx, "cy":self.cy, "f":self.f, "k1":self.k1, "k2":self.k2, "k3":self.k3, "k4":self.k4, "p1":self.p1, "p2":self.p2, "b1":self.b1, "b2":self.b2}
+        
+        
+        self.ajout_photo(homol.imagepath, homol.R, homol.S, "image_use")
+        
+        
+    def import_calib(self, calibration_name, path_agisoft_calib):
         # Charger le fichier XML
         self.cx = 0
         self.cy = 0
@@ -97,7 +123,6 @@ class camera:
         tree = ET.parse(path_agisoft_calib)
         root = tree.getroot()
         
-
         
         # Parcourir tous les éléments dans le fichier XML
         for elem in root:
@@ -127,6 +152,8 @@ class camera:
                 self.b1=float(elem.text)
             elif elem.tag=="b2":
                 self.b2=float(elem.text)
+                
+        self.calibrations[calibration_name]={"w" : self.w, "h":self.h,"cx":self.cx, "cy":self.cy, "f":self.f, "k1":self.k1, "k2":self.k2, "k3":self.k3, "k4":self.k4, "p1":self.p1, "p2":self.p2, "b1":self.b1, "b2":self.b2}
         print(self.__repr__)
 
             
@@ -147,7 +174,13 @@ class camera:
                          float(I[3])
                          ])
                      name=I[0]
-                     self.ajout_photo(name, R, S)
+                     try:
+                         I[16]
+                     except:
+                         calibname="None"
+                     else:
+                         calibname= I[16]
+                     self.ajout_photo(name, R, S, calibname)
     def distorsion_frame_brown_agisoft(self, m_cam):
         """
         Applique la distorsion de Brown à un point m_cam (X, Y, Z) dans le système caméra en utilisant les coefficients init.
@@ -176,7 +209,7 @@ class camera:
         uv=np.array([u,v])
         return uv
     
-    def set_camera_calib(self, name="", w=0, h=0, cx=0, cy=0, f=0, k1=0, k2=0, k3=0, k4=0, p1=0, p2=0, b1=0, b2=0 ):
+    def set_camera_calib(self, w=0, h=0, cx=0, cy=0, f=0, k1=0, k2=0, k3=0, k4=0, p1=0, p2=0, b1=0, b2=0 ):
         self.cx = cx
         self.cy = cy
         self.f = f
@@ -188,11 +221,42 @@ class camera:
         self.p2 = p2
         self.b1 = b1
         self.b2 = b2
-        self.name =name
         self.w = w
         self.h = h
+    def set_calib_from_image(self, photoname=None):
+        try:
+            calib=self.calibrations[self.images[photoname]["camera"]]
+        except:
+            print("calibration "+self.images[photoname]["camera"] +" inexistante")
+            self.cx = 0
+            self.cy = 0
+            self.f = 0
+            self.k1 = 0
+            self.k2 = 0
+            self.k3 = 0
+            self.k4 = 0
+            self.p1 = 0
+            self.p2 = 0
+            self.b1 = 0
+            self.b2 = 0
+            self.w = 0
+            self.h = 0
+        else:
+            self.cx = calib["cx"]
+            self.cy = calib["cy"]
+            self.f = calib["f"]
+            self.k1 = calib["k1"]
+            self.k2 = calib["k2"]
+            self.k3 = calib["k3"]
+            self.k4 = calib["k4"]
+            self.p1 = calib["p1"]
+            self.p2 = calib["p2"]
+            self.b1 = calib["b1"]
+            self.b2 = calib["b2"]
+            self.w = calib["w"]
+            self.h = calib["h"]
         
-    def ajout_photo(self, name, R, S):
+    def ajout_photo(self, name, R, S, camera):
         """
         Ajoute une photo
         
@@ -200,7 +264,45 @@ class camera:
         :param R: Matrice de rotation (r11, r12, ...)
         :param S: Matrice des coordonnées de la caméra (X, Y, Z) dans le système globale
         """
-        self.images[name]={"R":R, "S":S}
+        self.images[name]={"R":R, "S":S, "camera":camera}
+        
+    def liste_image_direction_proximite(self, photoname, image_non=[]):
+        
+        R_m=self.images[photoname]["R"]
+        S_M=self.images[photoname]["S"]
+        vect_M=self.vect_dir_camera(photoname)
+        ordre_image_correspondance=[]
+        
+        dict_images=copy.deepcopy(self.images)
+        del dict_images[photoname]
+        for key in dict_images:
+            if key not in image_non:
+                vect_i=self.vect_dir_camera(key)
+                S_I=dict_images[key]["S"]
+                scalaire1 = np.dot(vect_M, vect_i)
+                d_MI=np.linalg.norm(S_I-S_M)
+                vect_M_I = (S_I-S_M) / d_MI
+                scalaire2= np.dot(vect_M_I, vect_M)
+                scalaire3= np.dot(-vect_M_I, vect_i)
+                
+                
+                poids_dist=0.00001
+                if d_MI<60:
+                    poids_dist=1-d_MI/70
+                poidsscalaire=scalaire1
+                
+                poids=(poids_dist*poidsscalaire)
+
+            
+            
+                
+            
+                ordre_image_correspondance.append([key, poids, scalaire1, scalaire2, scalaire3, d_MI])
+            
+        ordre_image_correspondance=np.array(ordre_image_correspondance, dtype=object)
+        indice_tri= ordre_image_correspondance[:,1].argsort()[::-1] 
+        return ordre_image_correspondance[indice_tri]
+        
     def vect_dir_camera(self,photoname):
         R=self.images[photoname]["R"]
         N=np.dot(R.T,np.array([0,0,-1]))
@@ -209,9 +311,8 @@ class camera:
     def point_terrain_to_point_camera(self, photoname, M):
         S=self.images[photoname]["S"]
         R=self.images[photoname]["R"]
-
+        self.set_calib_from_image(photoname)
         V=M-S
-
         F=np.array([0,0,-self.f])
 
         rms=np.dot(R,V)
@@ -228,6 +329,7 @@ class camera:
         m_prime=self.uv_to_m_prime(uv)
         S=self.images[photoname]["S"]
         R=self.images[photoname]["R"]
+        self.set_calib_from_image(photoname)
         
         
         x=m_prime[0]
@@ -272,6 +374,9 @@ class camera:
         """
         S=self.images[photoname]["S"]
         R=self.images[photoname]["R"]
+        self.set_calib_from_image(photoname)
+        
+        
         P=M
         PS=P-S
         
@@ -281,13 +386,14 @@ class camera:
         H=P-(PS@N)/(norm_PS*norm_N)*norm_PS/norm_N*N
         norm_PH=np.abs((PS@N)/(norm_PS*norm_N)*norm_PS)
         return H, norm_PH
-        
+    
+    # def dist_to_dproj(self, N, dist, )
         
     def uv_to_M_by_dist_prof(self, photoname, uv, dist_proj):
         m_prime=self.uv_to_m_prime(uv)
         S=self.images[photoname]["S"]
         R=self.images[photoname]["R"]
-        
+        self.set_calib_from_image(photoname)
         
         x=m_prime[0]
         y=m_prime[1]
@@ -328,13 +434,17 @@ class camera:
         :param degrees
         :return:
         """
-        r = Rot.from_euler('zyx', [k, p, o], degrees=degrees)
+        r = Rot.from_euler('xyz', [o, p, k], degrees=True)
         # return rot_z(k)@rot_y(p)@rot_x(o)
-        return r.as_matrix().T
+        return r.as_matrix()
     
-    
+    def rotmatrix_to_euler(self, R):
+        r =  Rot.from_matrix(R)
+        angles = r.as_euler("xyz",degrees=True)
+        return angles
 
     def mesh_pyramide_camera_create(self,photoname, distance, boundaries=None):
+        self.set_calib_from_image(photoname)
         if boundaries is None:
             x1=self.uv_to_M(photoname,np.array([0,0]),distance)
             x2=self.uv_to_M(photoname,np.array([0,self.h]),distance)
@@ -518,6 +628,7 @@ class depthmap:
             ])
         self.dproj_min_proj=dprojmin
         self.dproj_max_proj=dprojmax
+        print(self.boundaries_proj)
         return array_uv
     
     def importer_image_origine(self, pathimage):
@@ -572,9 +683,9 @@ class depthmap:
             points_inside_reduce=pcd.reduction_nuage_voxel(o3d_pcd,voxel)
             # print(points_inside_reduce.points)
             points=np.asarray(points_inside_reduce.points)
-            if 4000>points.shape[0]>3000:
+            if 2000>points.shape[0]>1000:
                 break
-            elif points.shape[0]<3000:
+            elif points.shape[0]<1000:
                 voxel-=0.3
             else:
                 voxel+=0.3
@@ -832,147 +943,71 @@ class depthmap:
 
         nbre_de_calcul=(-boundaries[1,0]+boundaries[1,1])*(-boundaries[0,0]+boundaries[0,1])
         print(f"Nbre de pixel: {nbre_de_calcul}")
-        # surface_color = (255, 0, 0)  # Couleur de la surface (rouge)
-        # # surface_colorb = (0, 0, 2555)
-        # ambient_intensity = 0.1  # Intensité de la lumière ambiante
-        # light_intensity = 1.0  # Intensité de la lumière diffusée
-        # specular_intensity = 0.5  # Intensité de la lumière spéculaire
-        # shininess = 32  # Paramètre de brillance (plus il est grand, plus l'éclat est petit)
+        w_image_projet= int(camera.w*fact_reduce_depthajuste)
+        h_image_projet=int(camera.h*fact_reduce_depthajuste)
+        image_rgba_projet = np.zeros((h_image_projet,w_image_projet, 4), dtype=np.uint8)
+        image_dproj_projet=np.zeros((h_image_projet,w_image_projet, 1), dtype=np.float64)
         
-        # pourc_prec=0
-        # i=0
-        # for v in range(boundaries[1,0],boundaries[1,1]):
-        #     for u in  range(boundaries[0,0],boundaries[0,1]):
-        #         i+=1
-        #         # depth_IA_value,depth_IA_value_origine, uv,pourc_prec,u_IA,v_IA= jit_fct.initialisation_projet_sur_image(nbre_de_calcul, i, pourc_prec,u,v,fact_reduce_depthajuste, fact,depthmap_IA,depthmap_IA_backup)
-        #         pourc=int(i/nbre_de_calcul*100)
-        #         delta=int(i/nbre_de_calcul*100)%10
-        #         if delta==0 and pourc_prec!=pourc:
-        #             print(f"Pourcentage traitée: {pourc}")
-        #             pourc_prec=pourc
-        #         u_IA=int(u/fact)
-        #         v_IA=int(v/fact)
-        #         # uv_array=np.array([
-        #         #     [u, v],
-        #         #     ])
-        #         uv=np.array([u/fact_reduce_depthajuste,v/fact_reduce_depthajuste])
-        #         depth_IA_value=depthmap_IA[v_IA, u_IA]
-                
-        #         depth_IA_value_origine=depthmap_IA_backup[v_IA, u_IA]
-
-        #         # if dprojmin<depth_IA_value+prec_depth:
-                    
-                
-        #         M,vect=jit_fct.uv_to_M_by_dist_prof(S,R, uv, 25.0, camera.k1,camera.k2,camera.k3,camera.k4,camera.p1,camera.p2,camera.b1,camera.b2,camera.w,camera.h,camera.cx,camera.cy,camera.f)
-
-        #         # time.sleep(5)
-        #         inter_mesh=mm.intersection_obj_vecteur(S, vect, projet)
         
-                
-                
-        #         if inter_mesh is not None:
-        #             normal=inter_mesh[2]
-        #             color_mesh=inter_mesh[3]
-                    
-        #             if color_mesh is None:
-        #                 color_mesh=surface_color
+        MAX_PIXELS = 1000
 
-                    
-
-        #             color=mm.phong_lighting(normal, light_dir, view_dir, color_mesh, ambient_intensity, light_intensity, specular_intensity, shininess)
-        #             # color=tuple(color)
-        #             # point=inter_mesh[0]
-        #             # liste_point.append(point)
-        #             # distance=inter_mesh[1]
-        #             if depth_IA_value_origine==0 :
-        #                 # value_calc=9999
-        #                 image.putpixel((u, v), color)
-        #             else:
-        #                 profondeur_valeur=None
-        #                 depth_calc=None
-                        
-                        
-        #                 P_proj, d_proj=jit_fct.calcul_proj_cam(S, R, M)
-        #                 # P=M
-        #                 # PS=P-S
-        #                 # # print(PS)
-
-        #                 # N=np.dot(R.T,np.array([0.0,0.0,-1.0]))
-        #                 # # print(R)
-        #                 # # print(N)
-        #                 # norm_N=np.linalg.norm(N)
-        #                 # norm_PS=np.linalg.norm(PS)
-        #                 # # H=P-(PS@N)/(norm_PS*norm_N)*norm_PS/norm_N*N
-        #                 # d_proj=np.abs((PS@N)/(norm_PS*norm_N)*norm_PS)
-                        
-                        
-                        
-        #                 if depth_IA_value>prec_depth+d_proj:
-        #                     image.putpixel((u, v), color)
-        #                 elif depth_IA_value-prec_depth<d_proj:
-                            
-        #                     array_prof_15dm = jit_fct.return_array_epurer_from(u_IA, v_IA, depth_IA_value, array_prof, larg_image)
-        #                     if array_prof_15dm is not None:
-        #                         y_pred, unique_label = jit_fct.dbscan_non_optimise(array_prof_15dm)
-        #                         profondeur_valeur=jit_fct.return_array_calcul_moindre_carre(y_pred, unique_label, depth_IA_value, array_prof_15dm)
-                            
-        #                     if profondeur_valeur is not None:
-        #                         deptha=profondeur_valeur[:, 4][:, np.newaxis]
-        #                         deptha=depth_IA_value-deptha
-                                
-        #                         array_prof=np.append(profondeur_valeur,deptha, axis=1)
-        #                         array_prof = array_prof[array_prof[:, 5].argsort()]
-                                
-        #                         mask=array_prof[:, 5]>0
-        #                         mask_array=array_prof[mask]
-        #                         value_prov=mask_array[0,4]
-        #                         # value_prov=jit_fct.calcul_value_prov(np.array(profondeur_valeur, dtype=np.float64), depth_IA_value)
-        #                         if value_prov>d_proj:
-        #                             image.putpixel((u, v), color)
-        #                         else:
-                                    
-        #                             inc, vi, wi, B_calc,s0, Quot, Kxx=jit_fct.gauss_markov(np.array(profondeur_valeur, dtype=np.float64), robuste=True, iter_robuste=4)
-                                    
-        #                             # X_range=np.array(range(int(np.min(X)),int(np.max(X))+2))[:, np.newaxis]
-        #                             # a=np.ones((int(np.max(X))+2-int(np.min(X)),1))
-                                    
-        #                             # A_range=np.column_stack((X_range, a))
-        #                             # res=A_range@inc
-                                    
-        #                             if Quot<1.8:
-        #                                 depth_calc=depth_IA_value*inc[0,0]+inc[1,0]
-        #                                 if depth_calc>d_proj:
-        #                                     image.putpixel((u, v), color)
-        #                             else:
-        #                                 if depth_IA_value>d_proj:
-                                            
-        #                                     image.putpixel((u, v), color)
-        #                                     a=1
-        #                     else:
-        #                         # image.putpixel((u, v), colorb)
-        #                         if depth_IA_value>d_proj:
-                                    
-        #                             image.putpixel((u, v), color)
-        #                             a=1
-        #                         a=1
+        # Taille de l'emprise totale
+        u_min, u_max = boundaries[0]
+        v_min, v_max = boundaries[1]
         
-        image_arraymodifier=self.boucle_calcul_pixel_image_projet(np.array(image, dtype=np.float64), np.array(depthmap_IA, dtype=np.float64), np.array(depthmap_IA_backup, dtype=np.float64), projet, boundaries, dprojmin, prec_depth, nbre_de_calcul, fact, fact_reduce_depthajuste,S,R, camera.k1,camera.k2,camera.k3,camera.k4,camera.p1,camera.p2,camera.b1,camera.b2,camera.w,camera.h,camera.cx,camera.cy,camera.f, light_dir, view_dir,array_prof, larg_image)
+        width = u_max - u_min
+        height = v_max - v_min
+        total_pixels = width * height
+        
+        # Taille idéale de bloc (approximativement carré)
+        approx_block_size = int(np.sqrt(MAX_PIXELS))
+        block_w = approx_block_size
+        block_h = approx_block_size
+        sub_boundaries = []
+        for v_start in range(v_min, v_max, block_h):
+            for u_start in range(u_min, u_max, block_w):
+                u_end = min(u_start + block_w, u_max)
+                v_end = min(v_start + block_h, v_max)
+        
+                nb_pixels = (u_end - u_start) * (v_end - v_start)
+                if nb_pixels == 0:
+                    continue
+                sub_boundaries.append(np.array([[u_start, u_end], [v_start, v_end]], dtype=np.int64))
+        pixel_total=0
+        for sub_boundary in tqdm(sub_boundaries, desc="Calcul d'intersections"):
+
+                pixel_coords, directions_list, closest_rays= jit_fct.init_calcul_intersection(sub_boundary, fact_reduce_depthajuste,np.array(S, dtype=np.float64),np.array(R, dtype=np.float64), camera.k1,camera.k2,camera.k3,camera.k4,camera.p1,camera.p2,camera.b1,camera.b2,camera.w,camera.h,camera.cx,camera.cy,camera.f)
+                # print(len(directions_list))
+        
+
+        
+                # Traitement batch
+                image_rgba_projet, image_dproj_projet = self.calcul_image_rgb_from_mesh(
+                    image_rgba_projet,
+                    image_dproj_projet,
+                    pixel_coords,
+                    directions_list,
+                    closest_rays,
+                    S,
+                    R,
+                    light_dir,
+                    view_dir,
+                    projet
+                )
+                # pixel_total+=nb_pixels
+                # print(f"Il reste {nbre_de_calcul-pixel_total} à calculer les intersections")
+        
+        image_arraymodifier=self.calcul_visibilite_projet(np.array(image, dtype=np.float64), np.array(depthmap_IA, dtype=np.float64), np.array(depthmap_IA_backup, dtype=np.float64),  boundaries, image_rgba_projet, image_dproj_projet, prec_depth, nbre_de_calcul, fact, fact_reduce_depthajuste,S,R, camera.k1,camera.k2,camera.k3,camera.k4,camera.p1,camera.p2,camera.b1,camera.b2,camera.w,camera.h,camera.cx,camera.cy,camera.f, light_dir, view_dir,array_prof, larg_image)
+        
         image_PIL = Image.fromarray(image_arraymodifier.astype(np.uint8))
-        # image_PIL.show()
-        # image.show()
+        image_PIL.show()
         
         
       
         
         
-    def boucle_calcul_pixel_image_projet(self, image, depthmap_IA, depthmap_IA_backup, projet, boundaries, dprojmin, prec_depth, nbre_de_calcul, fact, fact_reduce_depthajuste,S,R, k1,k2,k3,k4,p1,p2,b1,b2,w,h,cx,cy,f, light_dir, view_dir,array_prof, larg_image):
-        surface_color = (255, 0, 0)  # Couleur de la surface (rouge)
-        # surface_colorb = (0, 0, 2555)
-        ambient_intensity = 0.1  # Intensité de la lumière ambiante
-        light_intensity = 1.0  # Intensité de la lumière diffusée
-        specular_intensity = 0.5  # Intensité de la lumière spéculaire
-        shininess = 32  # Paramètre de brillance (plus il est grand, plus l'éclat est petit)
-        
+    def calcul_visibilite_projet(self, image, depthmap_IA, depthmap_IA_backup, boundaries, image_rgba_projet, image_dproj_projet, prec_depth, nbre_de_calcul, fact, fact_reduce_depthajuste,S,R, k1,k2,k3,k4,p1,p2,b1,b2,w,h,cx,cy,f, light_dir, view_dir,array_prof, larg_image):
+
         pourc_prec=0
         i=0
         for v in range(boundaries[1,0],boundaries[1,1]):
@@ -989,62 +1024,35 @@ class depthmap:
                 # uv_array=np.array([
                 #     [u, v],
                 #     ])
-                uv=np.array([u/fact_reduce_depthajuste,v/fact_reduce_depthajuste])
                 depth_IA_value=depthmap_IA[v_IA, u_IA]
                 
                 depth_IA_value_origine=depthmap_IA_backup[v_IA, u_IA]
+                # print(depth_IA_value)
 
-                # if dprojmin<depth_IA_value+prec_depth:
-                    
+                d_proj=image_dproj_projet[v,u]
+                color=image_rgba_projet[v,u]
                 
-                M,vect=jit_fct.uv_to_M_by_dist_prof(np.array(S, dtype=np.float64),np.array(R, dtype=np.float64), uv, 25.0, k1,k2,k3,k4,p1,p2,b1,b2, w, h,cx,cy,f)
+                color=[color[0],color[1],color[2]]
 
-                # time.sleep(5)
-                inter_mesh=mm.intersection_obj_vecteur(S, vect, projet)
-                # inter_mesh=None
                 
                 
-                if inter_mesh is not None:
-                    normal=inter_mesh[2]
-                    color_mesh=inter_mesh[3]
-                    
-                    if color_mesh is None:
-                        color_mesh=surface_color
-
+                if d_proj!=0:
                     
 
-                    # color=mm.phong_lighting(normal, light_dir, view_dir, color_mesh, ambient_intensity, light_intensity, specular_intensity, shininess)
-                    color=[155,155,155]
-                    # color=tuple(color)
-                    # point=inter_mesh[0]
-                    # liste_point.append(point)
-                    # distance=inter_mesh[1]
+                    
                     if depth_IA_value_origine==0 :
-                        # value_calc=9999
                         image[v,u]=color
                     else:
                         profondeur_valeur=None
                         depth_calc=None
                         
-                        
-                        P_proj, d_proj=jit_fct.calcul_proj_cam(S, R, M)
-                        # P=M
-                        # PS=P-S
-                        # # print(PS)
 
-                        # N=np.dot(R.T,np.array([0.0,0.0,-1.0]))
-                        # # print(R)
-                        # # print(N)
-                        # norm_N=np.linalg.norm(N)
-                        # norm_PS=np.linalg.norm(PS)
-                        # # H=P-(PS@N)/(norm_PS*norm_N)*norm_PS/norm_N*N
-                        # d_proj=np.abs((PS@N)/(norm_PS*norm_N)*norm_PS)
                         
                         
                         
-                        if depth_IA_value>prec_depth+d_proj:
+                        if depth_IA_value>prec_depth*2.5+d_proj:
                             image[v,u]=color
-                        elif depth_IA_value-prec_depth<d_proj:
+                        elif depth_IA_value-prec_depth*2.5<d_proj:
                             
                             array_prof_15dm = jit_fct.return_array_epurer_from(u_IA, v_IA, depth_IA_value, array_prof, larg_image)
                             if array_prof_15dm is not None:
@@ -1068,12 +1076,7 @@ class depthmap:
                                 else:
                                     
                                     inc, vi, wi, B_calc,s0, Quot, Kxx=jit_fct.gauss_markov(np.array(profondeur_valeur, dtype=np.float64), robuste=True, iter_robuste=4)
-                                    # Quot=2
-                                    # X_range=np.array(range(int(np.min(X)),int(np.max(X))+2))[:, np.newaxis]
-                                    # a=np.ones((int(np.max(X))+2-int(np.min(X)),1))
-                                    
-                                    # A_range=np.column_stack((X_range, a))
-                                    # res=A_range@inc
+
                                     
                                     if Quot<1.8:
                                         depth_calc=depth_IA_value*inc[0,0]+inc[1,0]
@@ -1085,16 +1088,70 @@ class depthmap:
                                             image[v,u]=color
                                             a=1
                             else:
-                                # image.putpixel((u, v), colorb)
                                 if depth_IA_value>d_proj:
-                                    
+
                                     image[v,u]=color
                                     a=1
                                 a=1
         return image
         
-    def calcul_image_rgb_from_mesh(self):
+    def calcul_image_rgb_from_mesh(self, image_rgba_projet, image_dproj_projet, pixel_coords, directions_list, closest_rays, S,R, light_dir, view_dir, mesh):
         
+        
+        surface_color = (255, 0, 0)  # Couleur de la surface (rouge)
+        # surface_colorb = (0, 0, 2555)
+        ambient_intensity = 0.2  # Intensité de la lumière ambiante
+        light_intensity = 5.0  # Intensité de la lumière diffusée
+        specular_intensity = 0.5  # Intensité de la lumière spéculaire
+        shininess = 5
+        
+
+
+        origins = np.repeat(np.array([S]), len(directions_list), axis=0)
+        directions = np.array(directions_list, dtype=np.float64)
+        
+        
+        # print("Début du calcul d'intersection")
+        locs, ray_ids, tri_ids = mesh.ray.intersects_location(origins, directions)
+        # print("Début du calcul de prepartion_donnee")
+        # ray_ids = np.array(ray_ids, dtype=np.int64)
+        # origins = np.array(origins, dtype=np.float64)
+        
+        
+        if ray_ids.size != 0:
+            closest_dist, closest_hit_idx=jit_fct.prep_donnee_intersection( np.array(locs, dtype=np.float64), np.array(ray_ids, dtype=np.int64),  np.array(tri_ids, dtype=np.int64), np.array(origins, dtype=np.float64), np.array(directions_list, dtype=np.float64))
+        
+        
+            # for r_id, (dist2, i) in closest.items():
+            for r_id in np.where(closest_hit_idx != -1)[0]:
+                # print("Début du calcul de prepartion_donnee")
+                i = closest_hit_idx[r_id]
+                dist2=closest_dist[r_id]
+                tri_id = tri_ids[i]
+                vertex_indices = mesh.faces[tri_id]
+                normal = mesh.face_normals[tri_id]
+                uvs = mesh.visual.uv[vertex_indices]
+                uv = np.array([[uvs[0, 0], uvs[0, 1]]])  # toujours simplifié
+        
+                color_mesh = mesh.visual.material.to_color(uv)[0]
+                color_mesh=tuple(color_mesh)
+                # print(color)
+                # normal = mesh.face_normals[closest_triangle_idx]
+                color=mm.phong_lighting(normal, light_dir, view_dir, color_mesh, ambient_intensity, light_intensity, specular_intensity, shininess)
+                y, x = pixel_coords[r_id]
+                
+                vect = closest_rays[(y, x)]['vect']
+                
+                M=S+vect*np.sqrt(dist2)
+                P_proj, d_proj=jit_fct.calcul_proj_cam(S, R, M)
+                # print(d_proj)
+                # print(dist2)
+                # time.sleep(5)
+    
+                image_rgba_projet[y, x] = color
+                image_dproj_projet[y, x]=d_proj
+            
+        return image_rgba_projet, image_dproj_projet
     def fusion_depthpro_depthanything(self, depthanything, depthpro=None):
         for i in range(depthpro.shape[0]):
             for j in range(depthpro.shape[1]):
@@ -1317,40 +1374,38 @@ class depthmap:
                 min_depth=x_prec[0]
             A=np.ones((nb_l,1))
             A[:,0]=X
-            # A[:,1]=X**2
-            
-            if len(liste_array)>0:
-                if np.mean(liste_array[0][:,4])<np.max(array_cal[:,4]):
-                    max_depth=np.mean(liste_array[0][:,4])*0.25+np.min(liste_array[0][:,4])*0.75
-            if len(liste_array)==0:
-                max_depth=40
-            # if array_seconde is not None:
-            #     if array_seconde.shape[0]>0:
-            #         max_depth=9998
-
-            # A_range= np.concatenate((X_range, X_range**2), axis=1)
 
 
             Qll=np.eye(nb_l, nb_l)
-    
-            # sigma_B=np.array(range(nb_l))[:, np.newaxis].astype(float)
-            # sigma_B+=0.001
-            # Qll=sigma_B*Qll
+
             inc1, vi, wi, B_calc,s0, Quot, Kxx=gauss_markov(np.array(Qll, dtype=np.float64), np.array(A, dtype=np.float64), np.array(B, dtype=np.float64))
-            # if inc1[0,0]<0:
-            #     inc1[0,0]=1
+
             if inc1[0,0]<0:
                 if len(liste_array)>0:
-                    if np.min(liste_array[0][:,2])>np.mean(array_cal[:,2]):
+                    if np.min(liste_array[0][:,2])>np.mean(array_cal[:,2]) :
                         a=(np.min(liste_array[0][:,2])-np.mean(array_cal[:,2]))/(np.min(liste_array[0][:,4])-np.mean(array_cal[:,4]))*0.5
                     else:
                         a=(np.mean(liste_array[0][:,2])-np.mean(array_cal[:,2]))/(np.mean(liste_array[0][:,4])-np.mean(array_cal[:,4]))*0.5
+                        
                 else:
                     a=1.0
             else:
                 a=inc1[0,0]
             b=x1[1]-a*x1[0]
-
+            if len(liste_array)>0:
+                if np.min(liste_array[0][:,4])<max_depth:
+                    max_depth=np.min(liste_array[0][:,4])*0.9+np.mean(liste_array[0][:,4])*0.1
+                
+            if max_depth*a+b>np.max(array_cal[:,2]):
+                max_depth=(np.max(array_cal[:,2])-b)/a
+            if len(liste_array)>0:
+                if np.min(liste_array[0][:,4])<np.max(array_cal[:,4]):
+                    max_depth=np.mean(liste_array[0][:,4])*0.25+np.min(liste_array[0][:,4])*0.75
+            
+            
+            if len(liste_array)==0:
+                max_depth=500
+                max_depth=35
 
             plt.plot(X+x1[0], B+x1[1], ".", alpha=0.3)
             plt.plot([min_depth, max_depth],[min_depth*a+b, max_depth*a+b], c="red")
@@ -2625,130 +2680,3 @@ def fonction_de_perte_huber(residuals, delta):
     return np.where(np.abs(residuals) <= delta,
                     0.5 * residuals**2,
                     delta * (np.abs(residuals) - 0.5 * delta))
-@jit
-def boucle_calcul_pixel_image_projet(image, depthmap_IA, depthmap_IA_backup, projet, boundaries, dprojmin, prec_depth, nbre_de_calcul, fact, fact_reduce_depthajuste,S,R , k1:np.float64,k2:np.float64,k3:np.float64,k4:np.float64,p1:np.float64,p2:np.float64,b1:np.float64,b2:np.float64,w:np.float64,h:np.float64,cx:np.float64,cy:np.float64,f:np.float64, light_dir, view_dir,array_prof, larg_image):
-    surface_color = (255, 0, 0)  # Couleur de la surface (rouge)
-    # surface_colorb = (0, 0, 2555)
-    ambient_intensity = 0.1  # Intensité de la lumière ambiante
-    light_intensity = 1.0  # Intensité de la lumière diffusée
-    specular_intensity = 0.5  # Intensité de la lumière spéculaire
-    shininess = 32  # Paramètre de brillance (plus il est grand, plus l'éclat est petit)
-    
-    pourc_prec=0
-    i=0
-    for v in range(boundaries[1,0],boundaries[1,1]):
-        for u in  range(boundaries[0,0],boundaries[0,1]):
-            i+=1
-            # depth_IA_value,depth_IA_value_origine, uv,pourc_prec,u_IA,v_IA= jit_fct.initialisation_projet_sur_image(nbre_de_calcul, i, pourc_prec,u,v,fact_reduce_depthajuste, fact,depthmap_IA,depthmap_IA_backup)
-            pourc=int(i/nbre_de_calcul*100)
-            delta=int(i/nbre_de_calcul*100)%10
-            if delta==0 and pourc_prec!=pourc:
-                print(f"Pourcentage traitée: {pourc}")
-                pourc_prec=pourc
-            u_IA=int(u/fact)
-            v_IA=int(v/fact)
-            # uv_array=np.array([
-            #     [u, v],
-            #     ])
-            uv=np.array([u/fact_reduce_depthajuste,v/fact_reduce_depthajuste])
-            depth_IA_value=depthmap_IA[v_IA, u_IA]
-            
-            depth_IA_value_origine=depthmap_IA_backup[v_IA, u_IA]
-
-            # if dprojmin<depth_IA_value+prec_depth:
-                
-            
-            M,vect=jit_fct.uv_to_M_by_dist_prof(np.array(S, dtype=np.float64),np.array(R, dtype=np.float64), uv, 25.0, k1,k2,k3,k4,p1,p2,b1,b2, w, h,cx,cy,f)
-
-            # time.sleep(5)
-            inter_mesh=mm.intersection_obj_vecteur(S, vect, projet)
-    
-            
-            
-            if inter_mesh is not None:
-                normal=inter_mesh[2]
-                color_mesh=inter_mesh[3]
-                
-                if color_mesh is None:
-                    color_mesh=surface_color
-
-                
-
-                color=mm.phong_lighting(normal, light_dir, view_dir, color_mesh, ambient_intensity, light_intensity, specular_intensity, shininess)
-                # color=tuple(color)
-                # point=inter_mesh[0]
-                # liste_point.append(point)
-                # distance=inter_mesh[1]
-                if depth_IA_value_origine==0 :
-                    # value_calc=9999
-                    image[v,u]=color
-                else:
-                    profondeur_valeur=None
-                    depth_calc=None
-                    
-                    
-                    P_proj, d_proj=jit_fct.calcul_proj_cam(S, R, M)
-                    # P=M
-                    # PS=P-S
-                    # # print(PS)
-
-                    # N=np.dot(R.T,np.array([0.0,0.0,-1.0]))
-                    # # print(R)
-                    # # print(N)
-                    # norm_N=np.linalg.norm(N)
-                    # norm_PS=np.linalg.norm(PS)
-                    # # H=P-(PS@N)/(norm_PS*norm_N)*norm_PS/norm_N*N
-                    # d_proj=np.abs((PS@N)/(norm_PS*norm_N)*norm_PS)
-                    
-                    
-                    
-                    if depth_IA_value>prec_depth+d_proj:
-                        image[v,u]=color
-                    elif depth_IA_value-prec_depth<d_proj:
-                        
-                        array_prof_15dm = jit_fct.return_array_epurer_from(u_IA, v_IA, depth_IA_value, array_prof, larg_image)
-                        if array_prof_15dm is not None:
-                            y_pred, unique_label = jit_fct.dbscan_non_optimise(array_prof_15dm)
-                            profondeur_valeur=jit_fct.return_array_calcul_moindre_carre(y_pred, unique_label, depth_IA_value, array_prof_15dm)
-                        
-                        if profondeur_valeur is not None:
-                            deptha=profondeur_valeur[:, 4][:, np.newaxis]
-                            deptha=depth_IA_value-deptha
-                            
-                            array_prof=np.append(profondeur_valeur,deptha, axis=1)
-                            array_prof = array_prof[array_prof[:, 5].argsort()]
-                            
-                            mask=array_prof[:, 5]>0
-                            mask_array=array_prof[mask]
-                            value_prov=mask_array[0,4]
-                            # value_prov=jit_fct.calcul_value_prov(np.array(profondeur_valeur, dtype=np.float64), depth_IA_value)
-                            if value_prov>d_proj:
-                                image[v,u]=color
-                                # image.putpixel((u, v), color)
-                            else:
-                                
-                                inc, vi, wi, B_calc,s0, Quot, Kxx=jit_fct.gauss_markov(np.array(profondeur_valeur, dtype=np.float64), robuste=True, iter_robuste=4)
-                                
-                                # X_range=np.array(range(int(np.min(X)),int(np.max(X))+2))[:, np.newaxis]
-                                # a=np.ones((int(np.max(X))+2-int(np.min(X)),1))
-                                
-                                # A_range=np.column_stack((X_range, a))
-                                # res=A_range@inc
-                                
-                                if Quot<1.8:
-                                    depth_calc=depth_IA_value*inc[0,0]+inc[1,0]
-                                    if depth_calc>d_proj:
-                                        image[v,u]=color
-                                else:
-                                    if depth_IA_value>d_proj:
-                                        
-                                        image[v,u]=color
-                                        a=1
-                        else:
-                            # image.putpixel((u, v), colorb)
-                            if depth_IA_value>d_proj:
-                                
-                                image[v,u]=color
-                                a=1
-                            a=1
-    return image

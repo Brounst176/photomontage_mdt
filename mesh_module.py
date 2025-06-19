@@ -134,7 +134,7 @@ def phong_lighting(normal, light_dir, view_dir, surface_color, ambient_intensity
     # Conversion des valeurs en entiers sans utiliser astype
     color_int = np.round(color).astype(np.int32)
     
-    return [color_int[0],color_int[1],color_int[2]]
+    return [color_int[0],color_int[1],color_int[2],255]
 
 # Exemple de vecteurs et paramètres
 normal = np.array([0, 0, 1])  # Normale de la surface (ex. normale vers le haut)
