@@ -46,6 +46,20 @@ html{
     -4px  4px 4px rgba(255, 255, 255, 0.6),
      4px  4px 4px rgba(218, 218, 218, 0.6);
 }
+#source{
+    height: 100%;
+    margin: 20px;
+    display: flex;
+    flex-wrap: wrap;
+}
+.sourcebox{
+    background-color: rgba(255, 255, 255, 0.6);
+    border-radius: 5px;
+    padding: 20px;
+    margin: 25px;
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.5); /* ombre douce */
+    max-width: 500px;
+}
 @media (min-width: 1200px) {
 body, html{
     height: 100%;

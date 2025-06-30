@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil{% endblock %}
+
+{% block content %}
+<div id="accueil">
+     <video  controls>
+  <source src="{{ url_for('static', filename='image/tutoriel.mp4')}}" type="video/mp4">
+    </video> 
+    </div>
+{% endblock %}

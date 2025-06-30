@@ -31,6 +31,13 @@ def projet_show(projetname):
         projets_json = load_projets()
         return render_template("projet.html", projetname=projetname, projet=projets_json[projetname])
 
+@app.route('/source')
+def source_show():
+        return render_template("source.html", active_page='source')
+
+@app.route('/tutoriel')
+def tutoriel_show():
+        return render_template("tutoriel.html", active_page='tutoriel')
 
 #API 
 #=============================================
@@ -41,8 +48,11 @@ def get_points():
 
 @app.route('/images_projet/<path:projetname>')
 def image_projet(projetname):
-    image_dir = os.path.join('data_projet', projetname)
+    image_dir = os.path.join('../data_projet', projetname)
     return send_from_directory(image_dir, "image.png")
+
+
+
 
 @app.route('/extract_exif', methods=['POST'])
 def extract_exif():
