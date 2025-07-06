@@ -143,7 +143,7 @@ def input_10_wi_to_image(path_image, liste_uv_obs, val_mesure, val_calcul, wi, n
     
     image_origine.show()
     
-def show_point_in_image(pathimage, uv , corresp=None):
+def show_point_in_image(pathimage, uv , corresp=None, show_plot=True):
     img=Image.open(pathimage)
     max_size = 650
     w, h = img.size
@@ -157,7 +157,8 @@ def show_point_in_image(pathimage, uv , corresp=None):
     
     img_array=np.asarray(img)
     fig, ax = plt.subplots()
-    ax.imshow(img_array)
+    if show_plot:
+        ax.imshow(img_array)
     ax.axis('off') 
     
     if corresp is None:
@@ -179,7 +180,7 @@ def show_point_in_image(pathimage, uv , corresp=None):
     # plt.gca().invert_yaxis()
     
     
-def show_only_point_in_image(pathimage, uv , uv_out=None):
+def show_only_point_in_image(pathimage, uv , uv_out=None, show_plot=True):
     img=Image.open(pathimage)
     max_size = 650
     w, h = img.size
@@ -193,6 +194,7 @@ def show_only_point_in_image(pathimage, uv , uv_out=None):
     
     img_array=np.asarray(img)
     fig, ax = plt.subplots()
+
     ax.imshow(img_array)
     ax.axis('off') 
 
@@ -208,5 +210,52 @@ def show_only_point_in_image(pathimage, uv , uv_out=None):
         u_out=uv_out[:,0]*scale
         v_out=uv_out[:,1]*scale
         scout=ax.scatter(u_out, v_out, c="red", alpha=0.8, label="Points avec un wi supérieur à 2.5")
-    plt.legend(loc="lower left")
+    # plt.legend(loc="lower left")
+    
+    return fig
 
+
+def show_only_point_in_image_pillow(pathimage, uv, uv_out=None, point_radius=5):
+    # Ouvrir l'image
+    img = Image.open(pathimage).convert("RGB")
+    
+    # Redimensionner
+    max_size = 650
+    w, h = img.size
+    scale = min(max_size / w, max_size / h)
+    new_size = (int(w * scale), int(h * scale))
+    img = img.resize(new_size, Image.LANCZOS)
+
+    # Réduire la saturation
+    enhancer = ImageEnhance.Color(img)
+    img = enhancer.enhance(0.3)
+
+    # Dessiner dessus
+    draw = ImageDraw.Draw(img)
+
+    # Convertir coordonnées et dessiner les points "verts"
+    u = uv[:, 0] * scale
+    v = uv[:, 1] * scale
+    for x, y in zip(u, v):
+        draw.ellipse(
+            (x - point_radius, y - point_radius, x + point_radius, y + point_radius),
+            fill="lime", outline="black"
+        )
+
+    # Si des points rouges sont fournis
+    if uv_out is not None and uv_out.shape[0] > 0:
+        u_out = uv_out[:, 0] * scale
+        v_out = uv_out[:, 1] * scale
+        for x, y in zip(u_out, v_out):
+            draw.ellipse(
+                (x - point_radius, y - point_radius, x + point_radius, y + point_radius),
+                fill="red", outline="black"
+            )
+
+    return img
+
+def save_fig(fig, pathname):
+    fig.savefig(pathname)
+    
+def save_image(image_pil, path):
+    image_pil.save(path)

@@ -1,4 +1,4 @@
-# Blender 4.1.1 MTL File: 'bermblens_epurer41.blend'
+# Blender 4.4.1 MTL File: 'bermblens_epurer41.blend'
 # www.blender.org
 
 newmtl Air_-_Vide_d'air
@@ -22,10 +22,10 @@ d 1.000000
 illum 1
 
 newmtl Bois-bardage_verticale_Large
-Ns 10.999996
+Ns 0.000000
 Ka 1.000000 1.000000 1.000000
 Kd 0.527447 0.399807 0.375826
-Ks 0.250000 0.250000 0.250000
+Ks 0.500000 0.500000 0.500000
 Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
@@ -69,6 +69,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
+map_Ks D:/TM_script/Pat_architecte/830 - Bremblens_Textures/Bois - Pin granuleux vertical -opt.jpg
 
 newmtl Bois_-_Sapin_laqué
 Ns 0.000000
@@ -88,6 +89,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
+map_Ks D:/TM_script/Pat_architecte/830 - Bremblens_Textures/Capture d’écran 2024-03-06 à 15.42.jpg
 
 newmtl Béton_-_Brut
 Ns 0.840000
@@ -212,7 +214,7 @@ illum 2
 newmtl Env._-_Herbe_verte
 Ns 0.000000
 Ka 1.000000 1.000000 1.000000
-Kd 0.118063 0.800228 0.144885
+Kd 0.025646 0.145639 0.030679
 Ks 0.500000 0.500000 0.500000
 Ke 0.000000 0.000000 0.000000
 Ni 1.500000
@@ -307,6 +309,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
+map_Ks D:/TM_script/Pat_architecte/830 - Bremblens_Textures/Métal - Barrière chaîne ba -opt.jpg
 
 newmtl Métal_-_Cuivre_nouveau
 Ns 8.200005
@@ -436,6 +439,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
+map_Ks D:/TM_script/Pat_architecte/830 - Bremblens_Textures/Stone - Granit Pinot Noir -opt.jpg
 
 newmtl Pierre_-_Grès_vert
 Ns 0.000000
@@ -465,6 +469,7 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 2
+map_Ks D:/TM_script/Pat_architecte/830 - Bremblens_Textures/Pierre - Marbre gris -opt.jpg
 
 newmtl Plastique_-_PE_blanc
 Ns 8.599999

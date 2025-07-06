@@ -31,7 +31,7 @@ global pathprojet
 
 
 class calcul_orientation_photo_homol:
-    def __init__(self, imagepath, position_approchee, projetcamera, pathprojet):
+    def __init__(self, imagepath, position_approchee, projetcamera, pathprojet, show_plot=True):
         """
         
 
@@ -82,6 +82,7 @@ class calcul_orientation_photo_homol:
         self.p2=0.0
         self.b1=0.0
         self.b2=0.0
+        self.show_plot=show_plot
         
         self.init_camera_read()
         
@@ -135,17 +136,20 @@ class calcul_orientation_photo_homol:
         
         
         #ELEMENT DE L'IMAGE MAITRESSE
-        w_m=self.projetcamera.calibrations[self.projetcamera.images[self.imagepath]["camera"]]["w"]
-        h_m=self.projetcamera.calibrations[self.projetcamera.images[self.imagepath]["camera"]]["h"]
+        w_m=self.w
+        h_m=self.h
         
         max_im_m=max(w_m, h_m)
 
-        if resize is not None:
+        if resize is not None and resize<max_im_m :
             self.fact_reduce_maitresse=resize/max_im_m
+            resize_maitresse=max_im_m
+        else:
+            resize_maitresse=max_im_m
         
         self.import_modele_IA()
         
-        self.image_cible = load_image(os.path.join(self.pathprojet,'image',self.imagepath), resize=resize, fn="max").cpu()
+        self.image_cible = load_image(os.path.join(self.pathprojet,'image',self.imagepath), resize=resize_maitresse, fn="max").cpu()
         self.feats_cible = extractor.extract(self.image_cible)
         
         plus_proches = self.trouver_cameras_proches_numpy(n=5)
@@ -166,18 +170,23 @@ class calcul_orientation_photo_homol:
         self.import_modele_IA()
         if imagename!=self.imagepath:
         
-            #ELEMENT DE L'IMAGE MAITRESSE
-            w=self.projetcamera.calibrations[self.projetcamera.images[self.imagepath]["camera"]]["w"]
-            h=self.projetcamera.calibrations[self.projetcamera.images[self.imagepath]["camera"]]["h"]
+
+            w=self.projetcamera.calibrations[self.projetcamera.images[imagename]["camera"]]["w"]
+            h=self.projetcamera.calibrations[self.projetcamera.images[imagename]["camera"]]["h"]
             self.image_traitee.append(imagename)
             max_im=max(w, h)
             fact_reduce_im=1.0
-            if resize is not None:
+
+            if resize is not None and resize<max_im :
                 fact_reduce_im=resize/max_im
+                resize_im=max_im
+            else:
+                fact_reduce_im=1.0
+                resize_im=max_im
             
             
             
-            image = load_image(os.path.join(self.pathprojet,'image',imagename), resize=resize, fn="max").cpu()
+            image = load_image(os.path.join(self.pathprojet,'image',imagename), resize=resize_im, fn="max").cpu()
             feats = extractor.extract(image)
             matches01 = matcher({'image0': self.feats_cible, 'image1': feats})
             feats_cible_matches, feats, matches01 = [
@@ -191,6 +200,9 @@ class calcul_orientation_photo_homol:
             pts1=m_kpts0.cpu().numpy()
             pts2=m_kpts1.cpu().numpy()
 
+
+
+            
             #epuration des points homologues
             F, mask = cv2.findFundamentalMat(pts1, pts2, method=cv2.USAC_MAGSAC, ransacReprojThreshold=2, confidence=0.999999, maxIters=10000)
             
@@ -202,22 +214,33 @@ class calcul_orientation_photo_homol:
             pts1_outliers = pts1[mask.ravel() == 0]
             pts2_outliers = pts2[mask.ravel() == 0]
             
+            score_inliers = scores[mask.ravel() > 0]
             
-            if pts1_inliers.shape[0]>10 and self.seuil_score_nb_homol(pts1_inliers.shape[0])<np.median(scores):
-                print(f"Correspondance OK : L'image {imagename}  compte {pts1_inliers.shape[0]} points homologues et un score median de {np.median(scores)}")
-                axes = viz2d.plot_images([self.image_cible,image])
-                viz2d.plot_matches(pts1_inliers, pts2_inliers, color="lime", lw=0.2)
+            maskscore = score_inliers>0.25
+            
+            pts1_inliers=pts1_inliers[maskscore]
+            pts2_inliers=pts2_inliers[maskscore]
+            score_inliers=score_inliers[maskscore]
+            
+            
+            if pts1_inliers.shape[0]>10 and self.seuil_score_nb_homol(pts1_inliers.shape[0])<np.median(score_inliers):
+                print(f"Correspondance OK : L'image {imagename}  compte {pts1_inliers.shape[0]} points homologues et un score median de {np.median(score_inliers)}")
+                # axes = viz2d.plot_images([self.image_cible,image])
+                # viz2d.plot_matches(pts1_inliers, pts2_inliers, color="lime", lw=0.2)
                 if self.homol_array is None:
-                    self.homol_array =np.array([[imagename, pts1_inliers.shape[0], np.round(pts1_inliers/self.fact_reduce_maitresse, decimals=2), np.round(pts2_inliers/fact_reduce_im, decimals=2), scores[mask.ravel() > 0]]], dtype=object)
+                    self.homol_array =np.array([[imagename, pts1_inliers.shape[0], np.round(pts1_inliers/self.fact_reduce_maitresse, decimals=2), np.round(pts2_inliers/fact_reduce_im, decimals=2), score_inliers]], dtype=object)
                 else:
-                    self.homol_array =np.vstack((self.homol_array,np.array([[imagename, pts1_inliers.shape[0], np.round(pts1_inliers/self.fact_reduce_maitresse, decimals=2), np.round(pts2_inliers/fact_reduce_im, decimals=2), scores[mask.ravel() > 0]]], dtype=object)))
+                    self.homol_array =np.vstack((self.homol_array,np.array([[imagename, pts1_inliers.shape[0], np.round(pts1_inliers/self.fact_reduce_maitresse, decimals=2), np.round(pts2_inliers/fact_reduce_im, decimals=2), score_inliers]], dtype=object)))
             else:
-                print(f"L'image {imagename} compte {pts1_inliers.shape[0]} points homologues et un score median de {np.median(scores)}")
+                print(f"L'image {imagename} compte {pts1_inliers.shape[0]} points homologues et un score median de {np.median(score_inliers)}")
         
     def calcul_iteratif_homol_matches(self):
         dict_homol_filtre, array_homol_tri=self.feats_analyse()
-        i=20
-        while array_homol_tri[array_homol_tri[:,4]>3].shape[0]<5:
+        k=2
+        j=0
+        while array_homol_tri[array_homol_tri[:,4]>3].shape[0]<7 :
+            if j==k:
+                break
             liste_homol=self.homol_array
             image_M=liste_homol[np.argmax(liste_homol[:, 1]),0]
             
@@ -227,6 +250,7 @@ class calcul_orientation_photo_homol:
                 
             dict_homol_filtre, array_homol_tri=self.feats_analyse()
             
+            j+=1
         return dict_homol_filtre, array_homol_tri
     
     def feats_analyse(self):
@@ -234,16 +258,18 @@ class calcul_orientation_photo_homol:
         dict_homol_maitresse={}
         
         for i in range(self.homol_array.shape[0]):
+            score=self.homol_array[i,4]
             for j in range(self.homol_array[i,2].shape[0]):
                 u_maitresse=self.homol_array[i,2][j,0]
                 v_maitresse=self.homol_array[i,2][j,1]
                 imagename=self.homol_array[i,0]
                 u_homol=self.homol_array[i,3][j,0]
                 v_homol=self.homol_array[i,3][j,1]
+                
                 S=self.projetcamera.images[imagename]["S"]
                 key=str(u_maitresse)+"_"+str(v_maitresse)
                 if key not in dict_homol_maitresse.keys():
-                    dict_homol_maitresse[str(u_maitresse)+"_"+str(v_maitresse)]={"u" : u_maitresse, "v":  v_maitresse, "homol" :  []}
+                    dict_homol_maitresse[str(u_maitresse)+"_"+str(v_maitresse)]={"u" : u_maitresse, "v":  v_maitresse, "homol" :  [], "score": score}
                 
                 
                 vecteur=self.projetcamera.uv_to_M(imagename, [u_homol, v_homol], 1.0)-S
@@ -261,7 +287,7 @@ class calcul_orientation_photo_homol:
         return dict_homol_filtre, array_homol_tri
         
         
-    def calcul_approximatif_homol_3D(self, dict_homol):
+    def calcul_approximatif_homol_3D(self, dict_homol, seuil_reproj=5, nbhomol_max=80):
         points3d={}
         A_liste=[]
         l_liste=[]
@@ -309,7 +335,7 @@ class calcul_orientation_photo_homol:
                 Quot=s0/sigma0
                 
                 
-                if Quot>1.2 and nb_l>2: 
+                if nb_l>2 and np.mean(vi)>5: 
                     prev_inc=x.copy()
                     delta=0.2
                     for iteration in range(2):
@@ -352,12 +378,17 @@ class calcul_orientation_photo_homol:
                 dict_homol[key]["Quot"]=Quot
                 
                 
-                if (Quot>1.2 or np.mean(FS_list)>2.0 or (Qxx[0,0]>10 or Qxx[1,1]>10 or Qxx[2,2]>10 ) or x[4,0]<0) :
+                if (np.mean(FS_list)>10.0 or (Qxx[0,0]>10 or Qxx[1,1]>10 or Qxx[2,2]>10 ) or x[4,0]<0) :
                     dict_supprimer[key]=dict_homol[key]
                 else:
                     liste_point3D.append(CoordM)
                     dict_valide[key]=dict_homol[key]
-        pcd.save_point_cloud_las(np.array(liste_point3D), self.pathprojet+"/Output/homol.las")
+        # pcd.save_point_cloud_las(np.array(liste_point3D), self.pathprojet+"/Output/homol.las")
+        
+        if len(dict_valide)>nbhomol_max:
+            cles_aleatoires = random.sample(list(dict_valide.keys()), nbhomol_max)
+            dict_valide = {cle: dict_valide[cle] for cle in cles_aleatoires}
+            
         self.dict_homol=dict_valide
         return  dict_valide,dict_supprimer
     
@@ -375,9 +406,11 @@ class calcul_orientation_photo_homol:
         img = enhancer.enhance(0.3)
         
         img_array=np.asarray(img)
-        fig, ax = plt.subplots()
-        ax.imshow(img_array)
-        ax.axis('off') 
+        
+        if self.show_plot:
+            fig, ax = plt.subplots()
+            ax.imshow(img_array)
+            ax.axis('off') 
         u_liste=[]
         v_liste=[]
         u_proj_liste=[]
@@ -500,8 +533,8 @@ class calcul_orientation_photo_homol:
                 else:
                     uv_outliers.append([u,v])
                 i+=1
-                
-            plot.show_only_point_in_image(os.path.join(self.pathprojet,"image", self.imagepath), np.array(uv_liste), np.array(uv_outliers))
+            if self.show_plot:
+                plot.show_only_point_in_image(os.path.join(self.pathprojet,"image", self.imagepath), np.array(uv_liste), np.array(uv_outliers))
             # print(f"Nb_l : {vi_best.shape[0]}")
         else:
             print("Aucun modèle permet de résoudre la DLT")
@@ -996,7 +1029,7 @@ class calcul_orientation_photo_homol:
             
     def seuil_score_nb_homol(self, nb_points):
         nb=[0,20,40,80,150,1500]
-        seuil=[0.5,0.35,0.25,0.2,0.15,0.1]
+        seuil=[0.2,0.20,0.15,0.15,0.15,0.1]
         
         return float(np.interp(nb_points, nb, seuil))
             
@@ -1081,7 +1114,9 @@ class calcul_orientation_photo_homol:
                     uv_faux.append(str(B[i,0])+"_"+str(B[i+nb_obs,0]))
             else:
                     uv.append([B[i,0],B[i+nb_obs,0]])
-        plot.show_only_point_in_image(os.path.join(self.pathprojet,"image",self.imagepath), np.array(uv), np.array(uv_out))
+                    
+        if self.show_plot:
+            plot.show_only_point_in_image(os.path.join(self.pathprojet,"image",self.imagepath), np.array(uv), np.array(uv_out))
 
         return uv_faux
         
@@ -1114,6 +1149,18 @@ class calcul_orientation_photo_homol:
         kpc0, kpc1 = viz2d.cm_prune(self.matches01["prune0"]), viz2d.cm_prune(self.matches01["prune1"])
         viz2d.plot_images([self.imageload1, self.imageload2])
         viz2d.plot_keypoints([self.kpts0, self.kpts1], colors=[kpc0, kpc1], ps=10)
+        
+        
+    def dict_homol_to_uv(self):
+        
+        uv=[]
+        for key,v in self.dict_homol.items():
+            uv.append([v["u"], v["v"]])
+            
+            
+        return np.array(uv)
+        
+        
         
         
 

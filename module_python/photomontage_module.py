@@ -5,7 +5,7 @@ import os
 
 
 import trimesh
-from PIL import Image 
+from PIL import Image , ImageEnhance
 import copy 
 import laspy
 import matplotlib.pyplot as plt
@@ -17,8 +17,10 @@ from sklearn.preprocessing import PolynomialFeatures
 import alphashape 
 import numpy as np
 from tqdm import tqdm
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon
 from scipy.stats import chi2, norm
+from scipy.spatial import distance
+from scipy.spatial import KDTree,ConvexHull
 from numba import njit, jit #OPTIMISATION DES CALCULS
 import cv2
 import torch
@@ -28,11 +30,13 @@ import module_python.plot_module as plot
 import module_python.mesh_module as mm
 import module_python.pointcloud_module as pcd
 
+
+
 # DEPTHMAP CLASS
 # ===================================================================================================
 
 class photomontage_depthmap:
-    def __init__(self, photoname, pathprojet, camera,  max_megapixel=1.3, fact_reduce_IA=0.5, fact_reduce_photomontage=0.1, depthmodel="depthanything"):
+    def __init__(self, photoname, pathprojet, camera,  max_megapixel=1.3, fact_reduce_IA=0.5, fact_reduce_photomontage=0.1, depthmodel="depthanything", show_plot=True):
         """
         
 
@@ -77,14 +81,15 @@ class photomontage_depthmap:
         self.projet_emprise=None
         self.dproj_min_proj=None
         self.dproj_max_proj=None
+        self.show_plot=show_plot
 
         
     def create_depthmap(self, pathimage):
         img=self.read_image(pathimage)
         img_resize=self.resize_img_from_scale(img, self.fact_reduce_IA)
         depth_array=self.image_to_depthmap_IA_array(img_resize)
-        self.export_DEM_from_deptharray(depth_array)
-        self.export_image_from_deptharray(depth_array, img, grayscale=True)
+        # self.export_DEM_from_deptharray(depth_array)
+        # self.export_image_from_deptharray(depth_array, img, os.path.join(self.pathprojet,"Output","image_depth.png"), grayscale=True, pred_only=True)
         
         self.depthmap_IA=depth_array
         self.depthmap_IA_backup=depth_array
@@ -122,8 +127,9 @@ class photomontage_depthmap:
         #EXPORT IMAGE SOUS FORME DE MNT
         im = Image.fromarray(depth_array)
         im.save(self.pathprojet+"/Output/"+"image_depth.tif")
+    
         
-    def export_image_from_deptharray(self,depth_array, image_origine, pred_only=False, grayscale=False):
+    def export_image_from_deptharray(self,depth_array, image_origine,pathsaveimage, pred_only=False, grayscale=False, ):
         depth_255 = (depth_array - depth_array.min()) / ( depth_array.max() - depth_array.min()) * 255.0
         depth_255 = depth_255.astype(np.uint8)
         
@@ -135,22 +141,22 @@ class photomontage_depthmap:
             depth_rgb = (cmap(depth_255)[:, :, :3] * 255)[:, :, ::-1].astype(np.uint8)
             
         resized_img=self.resize_img_from_pixelwidth(depth_rgb, 1000)
-        cv2.imwrite('Ouput/img.png', depth_rgb)
+        # cv2.imwrite(self.pathprojet+"/Output/"+"image_depth.png", depth_rgb)
         if pred_only:
-            cv2.imwrite(self.pathprojet+"/Output/"+"image_depth.png", resized_img)
+            cv2.imwrite(pathsaveimage, resized_img)
             # cv2.imshow('Image DEM', resized_img)
             # cv2.imshow("Image", img_array)
-            cv2.waitKey(0)  # Attend une touche
-            cv2.destroyAllWindows()  # Ferme toutes les fenêtres
+            # cv2.waitKey(0)  # Attend une touche
+            # cv2.destroyAllWindows()  # Ferme toutes les fenêtres
 
         else:
-            image_origine_resize=self.resize_img_from_pixelwidth(image_origine, 1000)
+            image_origine_resize=self.resize_img_from_pixelwidth(np.array(image_origine), 1000)
             split_region = np.ones((image_origine_resize.shape[0], 50, 3), dtype=np.uint8) * 255
             combined_result = cv2.hconcat([image_origine_resize, split_region, resized_img])
             # cv2.imshow('combined result DEM', combined_result)
             # cv2.waitKey(0)  # Attend une touche
             # cv2.destroyAllWindows()  # Ferme toutes les fenêtres
-            cv2.imwrite(os.path.join(self.pathprojet,"Output","image_depth.png"), combined_result)
+            cv2.imwrite(pathsaveimage, combined_result)
         return depth_rgb
 
     def resize_img_from_pixelwidth(self,img, pixelwidth):
@@ -238,7 +244,7 @@ class photomontage_depthmap:
         o3d_pcd=pcd.array_TO_o3d(point_cloud, normales)
         # o3d_pcd=pcd.remove_statistical_outlier_pcd(o3d_pcd)
         point_cloud, normales=pcd.o3d_TO_array(o3d_pcd)
-        mesh=self.camera.mesh_pyramide_camera_create(self.photoname, 50, self.boundaries_proj)
+        mesh=self.camera.mesh_pyramide_camera_create(self.photoname, self.dproj_max_proj+5, self.boundaries_proj)
         
         points_inside, normal_inside=pcd.points_inside_mesh(point_cloud, normales, mesh)
         
@@ -353,9 +359,9 @@ class photomontage_depthmap:
                     img_uv_prof[v, u]=d
             
 
-
-
-    
+        if self.show_plot:
+            plot.plot_from_liste_prof(liste_uv_profondeur, title="Valeurs initiales")
+        
         # pcd.save_point_cloud_las(np.array(point_cloud_epurer), "point_cloud_import_to_camera.las")
         # pcd.save_point_cloud_las(np.array(point_supprimer), "point_cloud_supprimer_to_camera.las")
         
@@ -365,26 +371,22 @@ class photomontage_depthmap:
         
         # Trier le dictionnaire par clé dans l'ordre croissant
         dict_uv_profondeur = dict(sorted(dict_uv_profondeur.items()))
+        self.dict_prof=dict_uv_profondeur
+        self.epuration_visibilite_pointcloud()
+        
+        dict_uv_profondeur=self.dict_prof
         if adapte_basique_prof:
             liste_prof=self.dict_prof_TO_liste(dict_uv_profondeur)
             array_prof=np.array(liste_prof)
-            plot.plot_from_liste_prof(liste_prof, "depthanything1")
+            
+            
+            
+            
+            # plot.plot_from_liste_prof(liste_prof, "depthanything1")
             
             
             #Echelle depthajuste
-            max_depth=np.max(array_prof[:,4])
-            min_depth=np.min(array_prof[:,4])
-            max_dproj=np.max(array_prof[:,2])
-            min_dproj=np.min(array_prof[:,2])
-            a=(max_dproj-min_dproj)/(max_depth-min_depth)
-            b=max_dproj-max_depth*a
-
-            
-            self.depthmap_IA=self.depthmap_IA*a+b
-            
-            array_prof[:,4]= array_prof[:,4]*a+b
-    
-            max_depth=np.max(array_prof[:,4])
+            array_prof, max_depth,a,b=self.adaptation_lineaire_depthmap(array_prof)
             
     
             
@@ -397,22 +399,52 @@ class photomontage_depthmap:
             
             cluster, y_pred=pcd.DBSCAN_pointcloud(array_prof[:, [4,2]],2,15)
             unique=np.unique(y_pred)
-            plt.scatter(array_prof[:, 4], array_prof[:, 2], c=y_pred, cmap='coolwarm')
-            plt.show()
-            plt.close()
-            unique=np.delete(unique, 0)
+            if self.show_plot:
+                plt.scatter(array_prof[:, 4], array_prof[:, 2], c=y_pred, cmap='coolwarm')
+                plt.title("cluster DBSCAN")
+                plt.show()
+                plt.close()
+            unique=np.delete(unique, -1)
             liste_cluster=[]
             
-            if len(unique)>0:
+            if len(unique)>1 or len(unique)==1:
             
                 for i in range(len(unique)):
+                    
                     mask=y_pred==unique[i]
                     array_pred=array_prof[mask]
+                    
+                    if (unique[i]!=0 and array_pred.shape[0]>4) or array_pred.shape[0]>array_prof.shape[0]/2 :
+                    
+                        mean_depth=np.mean(array_pred[:,4])
+                        mean_dproj=np.mean(array_pred[:,2])
+                        min_dproj=np.min(array_pred[:,2])
+                        liste_cluster.append([mean_depth,mean_dproj, unique[i], min_dproj])
+                pred_groupe=np.array(liste_cluster)
+
+                clusters_valides = pred_groupe[:, 2].astype(int)
+                mask_total = np.isin(y_pred, clusters_valides)
+                array_prof_filtré = array_prof[mask_total]
+                y_pred = y_pred[mask_total]
+                
+                array_prof, max_depth,a,b=self.adaptation_lineaire_depthmap(array_prof_filtré)
+                if self.show_plot:
+                    plt.scatter(array_prof[:, 4], array_prof[:, 2])
+                    plt.title("Transformation")
+                    plt.show()
+                    plt.close()
+                liste_cluster2=[]
+        
+                for i in range(len(liste_cluster)):
+                    
+                    mask=y_pred==liste_cluster[i][2]
+                    array_pred=array_prof[mask]
+
                     mean_depth=np.mean(array_pred[:,4])
                     mean_dproj=np.mean(array_pred[:,2])
                     min_dproj=np.min(array_pred[:,2])
-                    liste_cluster.append([mean_depth,mean_dproj, unique[i], min_dproj])
-                pred_groupe=np.array(liste_cluster)
+                    liste_cluster2.append([mean_depth,mean_dproj, liste_cluster[i][2], min_dproj])
+                pred_groupe=np.array(liste_cluster2)
         
         
                 mask=(
@@ -423,27 +455,24 @@ class photomontage_depthmap:
         
                 grpe_epurer=pred_groupe[mask]
                 grpe_epurer = grpe_epurer[grpe_epurer[:, 3].argsort()]
-                # print(grpe_epurer)
+
                 mask=(grpe_epurer[:,0]>0)
-        
-                for i in range(grpe_epurer.shape[0]):
-                    id_cluster=grpe_epurer[i,2]
-                    mask_id=y_pred==id_cluster
-                    array_cluster= array_prof[mask_id]
-                    indices = np.where((grpe_epurer[:,1] >= np.min(array_cluster[:,2])) & (grpe_epurer[:,1] <= np.max(array_cluster[:,2])) & (grpe_epurer[:,0] < grpe_epurer[i,0]))
-        
+                if len(liste_cluster)>1:
+                    for i in range(grpe_epurer.shape[0]):
+                        id_cluster=grpe_epurer[i,2]
+                        mask_id=y_pred==id_cluster
+                        array_cluster= array_prof[mask_id]
+                        indices = np.where((grpe_epurer[:,1] >= np.min(array_cluster[:,2])) & (grpe_epurer[:,1] <= np.max(array_cluster[:,2])) & (grpe_epurer[:,0] < grpe_epurer[i,0]))
             
-                    for i, indice in enumerate(indices[0].tolist()):
-                        if grpe_epurer[indice,0]< np.min(array_cluster[:,0])-max_depth/4:
-                            mask[indice]=False
+                
+                        for i, indice in enumerate(indices[0].tolist()):
+                            if grpe_epurer[indice,0]< np.min(array_cluster[:,0])-max_depth/4:
+                                mask[indice]=False
         
                         
                         
                 grpe_epurer=grpe_epurer[mask]
-                    
-                    
-                    
-                        
+
                     
                     
                         
@@ -451,13 +480,16 @@ class photomontage_depthmap:
                 
                 y_pred_arr = np.array(y_pred)
                 mask_array_prof=np.isin(y_pred_arr, grpe_epurer[:, 2])
-                array_prof=array_prof[mask_array_prof]
 
-            
-            plt.scatter(array_prof[:, 4], array_prof[:, 2], c="green")
-            plt.title("Données épurées")
-            plt.show()
-            plt.close()
+                array_prof=array_prof[mask_array_prof]
+            if self.show_plot:
+                plot.plot_from_liste_prof(array_prof.tolist(), title="Données épurées")
+                plt.show()
+                plt.close()
+            # plt.scatter(array_prof[:, 4], array_prof[:, 2], c="green")
+            # plt.title("Données épurées")
+            # plt.show()
+            # plt.close()
             
     
                     
@@ -468,9 +500,8 @@ class photomontage_depthmap:
                         #FAIRE iCI LE TRI DU NUAGE DE POINTS PROJETE
                         #=================================================================================================
                         
-                
-            plt.show()
-            plt.close()
+            
+
             # mask=return_mask_detection_donnee_aberrante(array_prof[:, [4,2]])
             # liste_epurer=array_prof[mask].tolist()
             liste_epurer=array_prof.tolist()
@@ -479,8 +510,154 @@ class photomontage_depthmap:
         
         
         self.dict_prof=dict_uv_profondeur
-        # return dict_uv_profondeur
         
+    def adaptation_lineaire_depthmap(self, array_prof):
+        max_depth=np.max(array_prof[:,4])
+        min_depth=np.min(array_prof[:,4])
+        max_dproj=np.max(array_prof[:,2])
+        min_dproj=np.min(array_prof[:,2])
+        
+        
+        
+        
+        a=(max_dproj-min_dproj)/(max_depth-min_depth)
+        b=max_dproj-max_depth*a
+
+        
+        self.depthmap_IA=self.depthmap_IA*a+b
+        
+        array_prof[:,4]= array_prof[:,4]*a+b
+
+        max_depth=np.max(array_prof[:,4])
+        
+        return array_prof, max_depth, a, b
+        
+        # return dict_uv_profondeur
+    def epuration_visibilite_pointcloud(self):
+
+        liste_prof=self.dict_prof_TO_liste(self.dict_prof)
+        # Exemple : liste de points (x, y)
+        array_prof=np.array(liste_prof)
+        
+        points=np.array(array_prof[:,[0,1]], dtype="float64")
+        valeurs=np.array(array_prof[:,2], dtype="float64")
+        # Créer un arbre de recherche rapide
+        tree = KDTree(points)
+        
+        # Pour chaque point, on cherche le 2e plus proche (le 1er c’est lui-même)
+        # distances, indices = tree.query(points, k=2)
+        
+        # # distances[:, 1] contient la distance au plus proche voisin
+        # nearest_distances = distances[:, 1]
+        
+        # # Moyenne
+        # mean_nearest_distance = np.mean(nearest_distances)
+        # rayon = 2.5 * mean_nearest_distance
+        
+        
+        uv_visible = []
+        uv_occulte = []
+        
+        point_visible=[]
+        point_occulte=[]
+        # Étape 2 : analyse des points
+        for i, point in enumerate(points):
+            # Cherche tous les voisins dans le rayon (inclut potentiellement lui-même)
+            # neighbor_indices = tree.query_ball_point(point, r=rayon)
+            
+            # Exclure le point lui-même
+            # neighbor_indices = [j for j in neighbor_indices if j != i]
+            
+            _, neighbor_indices = tree.query(point, k=21)  # inclut le point lui-même
+            neighbor_indices = [j for j in neighbor_indices if j != i]
+            
+            if len(neighbor_indices) <= 2:
+                uv_visible.append(i)
+                point_visible.append(self.dict_prof[points[i,0]][points[i,1]]["point"])
+                continue  # Aucun voisin, on saute ce point
+            
+            # Valeur du point courant
+            valeur_point = valeurs[i]
+            
+            # Valeurs des voisins
+            valeurs_voisins = valeurs[neighbor_indices]
+
+            valeur_smd=np.std(valeurs_voisins)
+
+            voisins_plus_petit = [j for j in neighbor_indices if valeurs[j] < valeur_point-2]
+            
+
+            
+            # Créer polygone (convex hull)
+            try:
+                hull_points = points[voisins_plus_petit]
+                hull = ConvexHull(hull_points)
+                polygon = Polygon(hull_points[hull.vertices])
+                pt = Point(point)
+        
+                if polygon.contains(pt):
+                    point_occulte.append(self.dict_prof[points[i,0]][points[i,1]]["point"])
+                    self.dict_prof[points[i,0]].pop(points[i,1])
+                    
+                    if len(self.dict_prof[points[i,0]])==0:
+                        self.dict_prof.pop(points[i,0])
+                    uv_occulte.append(i)
+                else:
+                    point_visible.append(self.dict_prof[points[i,0]][points[i,1]]["point"])
+                    uv_visible.append(i)
+                    point_visible.append(self.dict_prof[points[i,0]][points[i,1]]["point"])
+            except Exception:
+                uv_visible.append(i)
+                point_visible.append(self.dict_prof[points[i,0]][points[i,1]]["point"])
+            
+
+        # pcd.save_point_cloud_las(np.array(point_visible), "visible.las")
+        # pcd.save_point_cloud_las(np.array(point_occulte), "occule.las")
+        
+        
+        
+        img=Image.open(os.path.join(self.pathprojet, "image", self.photoname))
+        
+        w, h = img.size
+        scale = self.fact_reduce_IA
+        new_size = (int(w * scale), int(h * scale))
+        # image_origine.show()
+        img = img.resize(new_size, Image.LANCZOS)
+        
+        enhancer = ImageEnhance.Color(img)
+        img = enhancer.enhance(0.3)
+        img_array=np.asarray(img)
+        
+        
+        # Scatter plot avec gradient de couleur (valeurs)
+        # sc = plt.scatter(points[:, 0], -points[:, 1], c=valeurs, cmap='hsv',s=20, linewidths=0, edgecolor='k')
+        # plt.colorbar(sc, label='Valeur associée')
+        # Entourer les points qui échouent avec une croix rouge
+        if self.show_plot:
+            plt.figure(figsize=(8, 6))
+            plt.scatter(points[uv_visible, 0], points[uv_visible, 1],facecolors='none',  edgecolors='lime', s=10, label='Visible')
+            
+            # Entourer les points qui passent avec un cercle vert
+            plt.scatter(points[uv_occulte, 0], points[uv_occulte, 1], marker='x', color='red', s=5, label='Occulté')
+            
+            
+        
+            plt.title("Analyse de visibilité des points")
+            plt.imshow(img_array)
+            plt.legend()
+            # plt.axis('equal')
+            plt.axis("off")
+    
+            plt.tight_layout()
+            plt.show()
+            plt.close()
+        
+        
+        
+
+        if self.show_plot:
+            plot.plot_from_liste_prof(liste_prof=self.dict_prof_TO_liste(self.dict_prof), title="Données visibles")
+        # return mean_nearest_distance
         
     def calcul_precision_dethmap(self, array_prof):
         diff=array_prof[:,4]-array_prof[:,2]
@@ -584,9 +761,16 @@ class photomontage_depthmap:
         image_arraymodifier=self.calcul_visibilite_projet(np.array(image, dtype=np.float64), np.array(depthmap_IA, dtype=np.float64), np.array(depthmap_IA_backup, dtype=np.float64),  boundaries, image_rgba_projet, image_dproj_projet, prec_depth, nbre_de_calcul, fact, fact_reduce_photomontage,S,R, camera.k1,camera.k2,camera.k3,camera.k4,camera.p1,camera.p2,camera.b1,camera.b2,camera.w,camera.h,camera.cx,camera.cy,camera.f, light_dir, view_dir,array_prof, larg_image)
         
         image_projet = Image.fromarray(image_rgba_projet.astype(np.uint8))
-        image_projet.show()
+        
         image_PIL = Image.fromarray(image_arraymodifier.astype(np.uint8))
-        image_PIL.show()
+        
+        if self.show_plot:
+            image_PIL.show()
+            image_projet.show()
+        return image_PIL, image_projet
+    
+    def save_image(self, image_pil, path):
+        image_pil.save(path)
 
         
     def calcul_visibilite_projet(self, image, depthmap_IA, depthmap_IA_backup, boundaries, image_rgba_projet, image_dproj_projet, prec_depth, nbre_de_calcul, fact, fact_reduce_photomontage,S,R, k1,k2,k3,k4,p1,p2,b1,b2,w,h,cx,cy,f, light_dir, view_dir,array_prof, larg_image):
@@ -815,7 +999,7 @@ class photomontage_depthmap:
         array_min=array_prof[0:10,:]
         x=array_prof[:,[4,2]]
         print(x)
-        mask=return_mask_detection_donnee_aberrante(x)
+        mask=self.return_mask_detection_donnee_aberrante(x)
         
         clusters, y_pred=pcd.DBSCAN_pointcloud(x, min_samples=5, n_neig=3)
         
@@ -847,18 +1031,18 @@ class photomontage_depthmap:
 
         res=A_range@inc
 
-        
-        plt.plot(x[:,0], x[:,1], '.', alpha=0.3)
-        plt.plot(X_range, res)
-        
-        plt.xlabel('Valeurs Depth IA', fontsize=12)
-        plt.ylabel('Valeurs terrain (dproj)', fontsize=12)
-        # ax.plot(inc, B)
-        # plt.legend()
-        plt.title("Valeur des profondeurs IA et monoplotting")
-        plt.show()
-        plt.close()
-        
+        if self.show_plot:
+            plt.plot(x[:,0], x[:,1], '.', alpha=0.3)
+            plt.plot(X_range, res)
+            
+            plt.xlabel('Valeurs Depth IA', fontsize=12)
+            plt.ylabel('Valeurs terrain (dproj)', fontsize=12)
+            # ax.plot(inc, B)
+            # plt.legend()
+            plt.title("Valeur des profondeurs IA et monoplotting")
+            plt.show()
+            plt.close()
+            
         
         self.depthmap_IA=self.depthmap_IA*inc[0,0]+inc[1,0]
         
@@ -890,8 +1074,8 @@ class photomontage_depthmap:
         # self.debug=array_epurer
         self.calcul_iteration_transformation_seconde(array_epurer)
         
-        plt.show()
-        plt.close()
+        # plt.show()
+        # plt.close()
         
 
         
@@ -1003,9 +1187,9 @@ class photomontage_depthmap:
             if len(liste_array)==0:
                 max_depth=500
                 max_depth=35
-
-            plt.plot(X+x1[0], B+x1[1], ".", alpha=0.3)
-            plt.plot([min_depth, max_depth],[min_depth*a+b, max_depth*a+b], c="red")
+            if self.show_plot:
+                plt.plot(X+x1[0], B+x1[1], ".", alpha=0.3)
+                plt.plot([min_depth, max_depth],[min_depth*a+b, max_depth*a+b], c="red")
             
 
             
@@ -1039,8 +1223,8 @@ class photomontage_depthmap:
                     b3=x_prec[1]-a3*x_prec[0]
                     
                     self.transformation_lineaire_depthmap_ia_and_dict_prof(a3,b3, max_depth2, max_depth3)
-
-                    plt.plot([max_depth2, max_depth3],[max_depth2*a3+b3,max_depth3*a3+b3], c="red")
+                    if self.show_plot:
+                        plt.plot([max_depth2, max_depth3],[max_depth2*a3+b3,max_depth3*a3+b3], c="red")
                     x_prec=np.array([max_depth3, max_depth3*a3+b3], dtype=float)
                     
                     
@@ -1121,6 +1305,7 @@ class photomontage_depthmap:
                 
             
         array_grillee=np.array(liste_points_grille)
+        
         plt.plot(array_grillee[:,0],-array_grillee[:,1], ".")
         plt.show()
         plt.close()
@@ -1945,6 +2130,50 @@ class photomontage_depthmap:
         list_prof=self.dict_prof_TO_liste(self.dict_prof)
         # array_prof=np.array(list_prof)
         plot.plot_from_liste_prof(list_prof, title="Depth Anything V2", equal=True)
+    def return_mask_detection_donnee_aberrante(self,data_2d):
+        data = np.array(data_2d, dtype=float)
+        data_epurer=data_epurer_densite_point(data,0)
+        # 1. Calcul de la moyenne des coordonnées
+        mean = np.mean(data_epurer, axis=0)
+       # 2. Calcul de la matrice de covariance
+        cov_matrix = np.cov(data_epurer, rowvar=False)
+        
+        # 3. Calcul des valeurs propres et vecteurs propres de la matrice de covariance
+        eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+        
+        # 4. Calcul des distances par rapport à l'ellipse
+        threshold = chi2.ppf(0.99, df=2)
+        outliers=[]
+        for i, point in enumerate(data):
+            if not is_inside_ellipse(point, mean, cov_matrix, threshold):
+                outliers.append(i)
+        mask_inside_ellipse = np.ones(len(data), dtype=bool)
+        mask_inside_ellipse[outliers] = False
+        data_inside_ellipse = data[mask_inside_ellipse]
+        # Visualisation des données
+        if self.show_plot:
+            plt.plot(data[outliers, 0], data[outliers, 1], '.', alpha=0.3, color='red', label='Points aberrants')
+            plt.plot(data_inside_ellipse[:, 0], data_inside_ellipse[:, 1], '.', alpha=0.3, color='blue', label='Points à l\'intérieur de l\'ellipse')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title('Détection des points aberrants')
+            plt.legend()
+            # plt.axis('equal')
+        
+            # Affichage de l'ellipse de confiance
+            theta = np.linspace(0, 2*np.pi, 100)
+            ellipse_x = np.sqrt(eigenvalues[0]*threshold) * np.cos(theta)
+            ellipse_y = np.sqrt(eigenvalues[1]*threshold) * np.sin(theta)
+            
+            # Rotation et translation de l'ellipse
+            ellipse = np.array([ellipse_x, ellipse_y]).T @ eigenvectors.T + mean
+            plt.plot(ellipse[:, 0], ellipse[:, 1], label='Ellipse de confiance', color='green')
+            
+            plt.show()
+            
+            plt.close()
+        
+        return mask_inside_ellipse
             
 
 def tri_array_par_rapport_a_une_colonne(array, colonne):
@@ -1965,49 +2194,7 @@ def creer_liste_intervalles(intervalle, nbre_mesures):
             
 
         
-def return_mask_detection_donnee_aberrante(data_2d):
-    data = np.array(data_2d, dtype=float)
-    data_epurer=data_epurer_densite_point(data,0)
-    # 1. Calcul de la moyenne des coordonnées
-    mean = np.mean(data_epurer, axis=0)
-   # 2. Calcul de la matrice de covariance
-    cov_matrix = np.cov(data_epurer, rowvar=False)
-    
-    # 3. Calcul des valeurs propres et vecteurs propres de la matrice de covariance
-    eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
-    
-    # 4. Calcul des distances par rapport à l'ellipse
-    threshold = chi2.ppf(0.99, df=2)
-    outliers=[]
-    for i, point in enumerate(data):
-        if not is_inside_ellipse(point, mean, cov_matrix, threshold):
-            outliers.append(i)
-    mask_inside_ellipse = np.ones(len(data), dtype=bool)
-    mask_inside_ellipse[outliers] = False
-    data_inside_ellipse = data[mask_inside_ellipse]
-    # Visualisation des données
-    plt.plot(data[outliers, 0], data[outliers, 1], '.', alpha=0.3, color='red', label='Points aberrants')
-    plt.plot(data_inside_ellipse[:, 0], data_inside_ellipse[:, 1], '.', alpha=0.3, color='blue', label='Points à l\'intérieur de l\'ellipse')
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.title('Détection des points aberrants')
-    plt.legend()
-    # plt.axis('equal')
-    
-    # Affichage de l'ellipse de confiance
-    theta = np.linspace(0, 2*np.pi, 100)
-    ellipse_x = np.sqrt(eigenvalues[0]*threshold) * np.cos(theta)
-    ellipse_y = np.sqrt(eigenvalues[1]*threshold) * np.sin(theta)
-    
-    # Rotation et translation de l'ellipse
-    ellipse = np.array([ellipse_x, ellipse_y]).T @ eigenvectors.T + mean
-    plt.plot(ellipse[:, 0], ellipse[:, 1], label='Ellipse de confiance', color='green')
-    
-    plt.show()
-    
-    plt.close()
-    
-    return mask_inside_ellipse
+
         
 def is_inside_ellipse(point, mean, cov_matrix, threshold):
     diff = point - mean
@@ -2033,11 +2220,11 @@ def data_epurer_densite_point(data, index_depth=0, index_mono=1, nb_val=15):
             array_modified = np.delete(array_modified, ind_choice, axis=0)
         elif len(indices)<3:
             array_modified = np.delete(array_modified, indices, axis=0)
-    plt.plot(data[:,index_depth], data[:,index_mono], ".", alpha=0.3)
-    plt.plot(array_modified[:,index_depth], array_modified[:,index_mono], ".", alpha=0.3)
+    # plt.plot(data[:,index_depth], data[:,index_mono], ".", alpha=0.3)
+    # plt.plot(array_modified[:,index_depth], array_modified[:,index_mono], ".", alpha=0.3)
 
-    plt.show()
-    plt.close()
+    # plt.show()
+    # plt.close()
     
     return array_modified
             

@@ -455,7 +455,7 @@ class camera:
         # Créer le maillage de la pyramide
         vertices = np.vstack([base_points, sommet])
         maillage = trimesh.Trimesh(vertices=vertices, faces=faces)
-        maillage.export(photoname+'.stl')
+        # maillage.export(photoname+'.stl')
         return maillage
 
     

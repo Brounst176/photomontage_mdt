@@ -22,19 +22,18 @@ import math as m
 pathimage="data_projet/heig/image"
 pathprojet="data_projet/heig"
 pathnuage="data_projet/heig/pointcloud.las"
-images_principales="_DSC7922.JPG"
+images_principales="20250705101835.jpg"
 
-position_approchee = np.array([2540583, 1181278])
+position_approchee = np.array([2540581, 1181281])
 
 #Projet à BREMBLENS
-pathimage="data_projet/Bremblens/image"
-pathprojet="data_projet/Bremblens"
-pathnuage="data_projet/Bremblens/pointcloud.las"
-images_principales="DJI_0629.JPG"
-# images_principales="DJI_0599.JPG"
+# pathimage="data_projet/Bremblens/image"
+# pathprojet="data_projet/Bremblens"
+# pathnuage="data_projet/Bremblens/pointcloud.las"
+# images_principales="DJI_0631.JPG"
 
-position_approchee = np.array([630, 64])
-# position_approchee = np.array([2529650, 1155119])
+# position_approchee = np.array([590, 102])
+
 
 
 
@@ -42,8 +41,8 @@ position_approchee = np.array([630, 64])
 #===================================================================================
 
 modele_photogra=cm.camera("foldernotexite")
-# modele_photogra.import_calib("nikon_d7500_17mm", pathprojet+"/nikon_d7500_17mm.xml") #POUR HEIG
-modele_photogra.import_calib("DJIMINI", pathprojet+"/DJIMINI.xml")  #POUR BREMBLENS
+modele_photogra.import_calib("nikon_d7500_17mm", pathprojet+"/nikon_d7500_17mm.xml") #POUR HEIG
+# modele_photogra.import_calib("DJIMINI", pathprojet+"/DJIMINI.xml")  #POUR BREMBLENS
 modele_photogra.import_image_from_omega_phi_kappa_file(pathprojet+"/position_orientation.txt")
 
 cacl_photo=lg.calcul_orientation_photo_homol(images_principales, position_approchee, modele_photogra, pathprojet)
@@ -52,16 +51,19 @@ cacl_photo=lg.calcul_orientation_photo_homol(images_principales, position_approc
 #===================================================================================
 
 #RECHERCHE DES POINTS HOMOLOGUES
-
-liste_homol=cacl_photo.first_feats_matches_calc(2500)
+cacl_photo.homol_array=None
+cacl_photo.image_traitee=[]
+liste_homol=cacl_photo.first_feats_matches_calc()
 
 dict_homol_filtre, array_homol_tri=cacl_photo.calcul_iteratif_homol_matches()
 #%%
 #CALCUL DES COORDONNEES 3D DES POINTS HOMOLOGUES
 dict_valide,dict_supprimer= cacl_photo.calcul_approximatif_homol_3D(dict_homol_filtre)
+
+#%% 
 # cacl_photo.proj_points_3D_dict_to_image()
 #CALCUL POSITION ORIENTATION APPROCHEE PAR DLT
-cacl_photo.RANSAC_DLT(k=200, n_samples=15)
+cacl_photo.RANSAC_DLT(k=200, n_samples=6, nb_inliers=8)
 
 
 
@@ -88,10 +90,10 @@ image_cible.import_from_class_calc_photo_homol(cacl_photo)
 
 
 #%% CALCUL PHOTOMONTAGE
-#===================================================================================
+##===================================================================================
 
-photomontage=ph.photomontage_depthmap(images_principales, pathprojet, image_cible, fact_reduce_IA=0.5, fact_reduce_photomontage=0.05)
-# # depthanything=cm.depthmap(images_principales, pathprojet, modele_photogra, fact_reduce_IA=0.5, fact_reduce_photomontage=0.5)
+photomontage=ph.photomontage_depthmap(images_principales, pathprojet, image_cible, fact_reduce_IA=0.5, fact_reduce_photomontage=0.5)
+# photomontage=ph.photomontage_depthmap(images_principales, pathprojet, modele_photogra, fact_reduce_IA=0.5, fact_reduce_photomontage=0.5)
 
 photomontage.import_projet_obj(os.path.join(pathprojet, "projet.obj"))
 photomontage.import_projet_emprise_obj(os.path.join(pathprojet, "emprise.obj"))
@@ -101,17 +103,28 @@ photomontage.create_depthmap(os.path.join(pathimage, images_principales))
 
 
 #%%
-#importation du nuage de points et inversion de la dethmap
+## importation du nuage de points et inversion de la dethmap
+photomontage.depthmap_IA=photomontage.depthmap_IA_backup
+photomontage.dict_prof={}
 photomontage.liste_coord_image_pt_homologue(pathnuage, True, True,adapte_basique_prof=True)
 
+
+# dict_prof=photomontage.dict_prof
+# liste_prof=photomontage.dict_prof_TO_liste(photomontage.dict_prof)
+# array_prof=np.array(liste_prof)
+
+
+# plot.show_only_point_in_image(os.path.join(pathprojet, "image", images_principales), array_prof[:,[0,1]]*2)
+
+#%%
 
 photomontage.transformation_simple_depthmap_IA()
 photomontage.transformation_seconde_depthmap_IA()
 
 
 #%%
-photomontage.plot_from_prof()
+# photomontage.plot_from_prof()
 
 #%%
-photomontage.calcul_position_projet_sur_images()
+image_PIL, image_projet=photomontage.calcul_position_projet_sur_images()
 

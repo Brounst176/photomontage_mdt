@@ -8,20 +8,31 @@
                <h3>Projet : {{projetname}}</h3>
                <img src="../images_projet/{{projetname}}" width="500">
                <div style="padding-top:20px;margin-top:20px;border-top: 3px solid #2b3035;">
-               <h5>Formulaire de création de photomonage</h5>
+               <h5>Formulaire de création de photomontage</h5>
+               <form  action="/calcul_photomontage" method="post" enctype="multipart/form-data" target="_blank">
                <div class="mb-3">
 
                     <label for="formFile" class="form-label">Importer une image</label>
-                    <input class="form-control" id="imageInput" type="file" id="formFile" accept=".jpg,.jpeg,.png">
+                    <input class="form-control" name="image" id="imageInput" type="file" id="formFile" accept=".jpg,.jpeg,.png" required>
+                    <label for="formFile" class="form-label">Mode de calcul (réduction de la résolution des images)</label>
+                    <select name="modecalcul" id="modecalcul">
+                          <option value="300000">Rapide (0.3 mios de pixels)</option>
+                          <option value="1200000" selected>Normal (1.2 mios de pixels)</option>
+                          <option value="3500000">Lent (3.5 mios de pixels)</option>
+                    </select>
                     <label for="coordimage" style="margin-top: 25px;"  class="form-label">Coordonnées MN95 de la position de la photo <br>
   <em>(cliquer sur la carte pour indiquer la position de la photo si cela n'a pas été détecté lors de l'import de l'image)</em></label>
-                    <input class="form-control" type="text" id="coordimage" value="" aria-label="readonly input example" readonly disabled>
+                    <input class="form-control" name="coords" type="text" id="coordimage" value="" aria-label="readonly input example" required>
+                    
+                    <input type="hidden" name="projetname" value="{{projetname}}">
+                    <input type="hidden" name="est" id="est" value="">
+                    <input type="hidden" name="nord" id="nord" value="">
                </div>
                <div style="display: flex; justify-content: center;margin-top: 20px;margin-bottom: 20px;">
-                    <button>Calculer le photomontage</button>
+                    <button type="submit" id="calculer">Calculer le photomontage</button>
 
                </div>    
-
+               </form>
           </div></div>
           <div id="map"></div>
      </div>

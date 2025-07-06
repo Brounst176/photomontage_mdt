@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fr">
+<head> 
+	<meta charset="UTF-8">
+	<title>Photomontage de projet</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='bootstrap/bootstrap.min.css') }}">
+	<link rel="stylesheet" href="{{ url_for('static', filename='css/style_base.css') }}">
+    <script src="{{ url_for('static', filename='bootstrap/bootstrap.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='LIB/jquery.min.js')}}"></script>
+
+</head>
+<body>
+
+<script>
+    projetname="{{projetname}}"
+    filename="{{filename}}"
+    est="{{est}}"
+    nord="{{nord}}"
+    modecalcul="{{modecalcul}}"
+</script>
+<div style="height: 100%;min-width: 500px;">
+<h1>Page du calcul du photomontage du projet {{projetname}}</h1>
+
+<div id="log"></div>
+<script src="{{ url_for('static', filename='js/calcul_photomontage.js') }}"></script>
+
+
+</body>
+</html>

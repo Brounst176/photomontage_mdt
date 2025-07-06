@@ -123,6 +123,8 @@ function update_position_image(east, north){
     };
 
     $("#coordimage").val(formatCoord(east)+" / "+formatCoord(north));
+    $("#est").val(east);
+    $("#nord").val(north);
     east_image=east
     north_image=north
 }
