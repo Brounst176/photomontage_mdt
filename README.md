@@ -1,5 +1,5 @@
 
-# Manuel
+# Manuel du Photomontage BDC
 
 Le code a été développé avec la version **3.10** du langage de programmation **Python**. Il est disponible sur GitHub.
 
@@ -139,3 +139,15 @@ Pour plus d’infos sur le format WKT : [libgeos.org/specifications/wkt](https:/
 - `data_projet/` : Données des projets de photomontage
 - `module_python/` : Modules Python pour les traitements (photomontage, IA, etc.)
 - `checkpoints/` : Modèles pré-entraînés IA (cartes de profondeur)
+
+  ## Citation
+
+```bibtex
+@article{photomontage_mdt,
+  title={Photomontage BDC},
+  author={Della Casa, Bruno},
+  year={2025}
+}
+
+
+```
