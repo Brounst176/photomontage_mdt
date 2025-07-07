@@ -383,7 +383,7 @@ class calcul_orientation_photo_homol:
                 else:
                     liste_point3D.append(CoordM)
                     dict_valide[key]=dict_homol[key]
-        # pcd.save_point_cloud_las(np.array(liste_point3D), self.pathprojet+"/Output/homol.las")
+        # pcd.save_point_cloud_las(np.array(liste_point3D), self.pathprojet+"/output/homol.las")
         
         if len(dict_valide)>nbhomol_max:
             cles_aleatoires = random.sample(list(dict_valide.keys()), nbhomol_max)

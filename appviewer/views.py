@@ -107,9 +107,11 @@ def traitement_photomontage():
         est = request.args.get("est")
         nord = request.args.get("nord")
         modecalcul = request.args.get("modecalcul")
+
+        centrage = get_centrage(projetname)
         print(est)
-        x=float(est)
-        y=float(nord)
+        x=float(est)-centrage[0]
+        y=float(nord)-centrage[1]
 
         img = cv2.imread(pathimage)
         mio_pixel=img.shape[1]*img.shape[0]
@@ -228,6 +230,14 @@ def get_calib(projetname):
         projetjson=load_projets()
         # print(projetjson)
         return projetjson[projetname]["calibration"]
+
+def get_centrage(projetname):
+        projetjson=load_projets()
+        # print(projetjson)
+        if "centrage" in projetjson[projetname]:
+                return projetjson[projetname]["centrage"]
+        else:
+                return [0.0, 0.0]
 
 
 @app.route('/images_projet/<path:projetname>')

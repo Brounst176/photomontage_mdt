@@ -14,7 +14,8 @@ import math as m
 
 
 #IMPORTER LA CREATION D'UNE CARTE DE PROFONDEUR
-
+start_time = time.time()
+print(start_time)
 
 #%%Variable de base
 
@@ -27,12 +28,12 @@ images_principales="20250705101835.jpg"
 position_approchee = np.array([2540581, 1181281])
 
 #Projet à BREMBLENS
-# pathimage="data_projet/Bremblens/image"
-# pathprojet="data_projet/Bremblens"
-# pathnuage="data_projet/Bremblens/pointcloud.las"
-# images_principales="DJI_0631.JPG"
+pathimage="data_projet/Bremblens/image"
+pathprojet="data_projet/Bremblens"
+pathnuage="data_projet/Bremblens/pointcloud.las"
+images_principales="DJI_0608.JPG"
 
-# position_approchee = np.array([590, 102])
+position_approchee = np.array([616, 136])
 
 
 
@@ -41,8 +42,8 @@ position_approchee = np.array([2540581, 1181281])
 #===================================================================================
 
 modele_photogra=cm.camera("foldernotexite")
-modele_photogra.import_calib("nikon_d7500_17mm", pathprojet+"/nikon_d7500_17mm.xml") #POUR HEIG
-# modele_photogra.import_calib("DJIMINI", pathprojet+"/DJIMINI.xml")  #POUR BREMBLENS
+# modele_photogra.import_calib("nikon_d7500_17mm", pathprojet+"/nikon_d7500_17mm.xml") #POUR HEIG
+modele_photogra.import_calib("DJIMINI", pathprojet+"/DJIMINI.xml")  #POUR BREMBLENS
 modele_photogra.import_image_from_omega_phi_kappa_file(pathprojet+"/position_orientation.txt")
 
 cacl_photo=lg.calcul_orientation_photo_homol(images_principales, position_approchee, modele_photogra, pathprojet)
@@ -92,7 +93,7 @@ image_cible.import_from_class_calc_photo_homol(cacl_photo)
 #%% CALCUL PHOTOMONTAGE
 ##===================================================================================
 
-photomontage=ph.photomontage_depthmap(images_principales, pathprojet, image_cible, fact_reduce_IA=0.5, fact_reduce_photomontage=0.5)
+photomontage=ph.photomontage_depthmap(images_principales, pathprojet, image_cible, fact_reduce_IA=0.5, fact_reduce_photomontage=0.1)
 # photomontage=ph.photomontage_depthmap(images_principales, pathprojet, modele_photogra, fact_reduce_IA=0.5, fact_reduce_photomontage=0.5)
 
 photomontage.import_projet_obj(os.path.join(pathprojet, "projet.obj"))
@@ -128,3 +129,8 @@ photomontage.transformation_seconde_depthmap_IA()
 #%%
 image_PIL, image_projet=photomontage.calcul_position_projet_sur_images()
 
+#%%
+end_time = time.time()
+print(end_time)
+elapsed_time = end_time - start_time
+print(f"Durée d'exécution du calcul ajusté de la Depthmap : {elapsed_time:.2f} secondes")

@@ -126,7 +126,7 @@ class photomontage_depthmap:
     def export_DEM_from_deptharray(self,depth_array):
         #EXPORT IMAGE SOUS FORME DE MNT
         im = Image.fromarray(depth_array)
-        im.save(self.pathprojet+"/Output/"+"image_depth.tif")
+        im.save(self.pathprojet+"/output/"+"image_depth.tif")
     
         
     def export_image_from_deptharray(self,depth_array, image_origine,pathsaveimage, pred_only=False, grayscale=False, ):
@@ -141,7 +141,7 @@ class photomontage_depthmap:
             depth_rgb = (cmap(depth_255)[:, :, :3] * 255)[:, :, ::-1].astype(np.uint8)
             
         resized_img=self.resize_img_from_pixelwidth(depth_rgb, 1000)
-        # cv2.imwrite(self.pathprojet+"/Output/"+"image_depth.png", depth_rgb)
+        # cv2.imwrite(self.pathprojet+"/output/"+"image_depth.png", depth_rgb)
         if pred_only:
             cv2.imwrite(pathsaveimage, resized_img)
             # cv2.imshow('Image DEM', resized_img)
@@ -404,9 +404,9 @@ class photomontage_depthmap:
                 plt.title("cluster DBSCAN")
                 plt.show()
                 plt.close()
-            unique=np.delete(unique, -1)
+            # unique=np.delete(unique, -1)
             liste_cluster=[]
-            
+            print(unique)
             if len(unique)>1 or len(unique)==1:
             
                 for i in range(len(unique)):
@@ -414,14 +414,14 @@ class photomontage_depthmap:
                     mask=y_pred==unique[i]
                     array_pred=array_prof[mask]
                     
-                    if (unique[i]!=0 and array_pred.shape[0]>4) or array_pred.shape[0]>array_prof.shape[0]/2 :
-                    
+                    if (unique[i]!=-1 and array_pred.shape[0]>4) or array_pred.shape[0]>array_prof.shape[0]/2 :
+                        print(unique[i])
                         mean_depth=np.mean(array_pred[:,4])
                         mean_dproj=np.mean(array_pred[:,2])
                         min_dproj=np.min(array_pred[:,2])
                         liste_cluster.append([mean_depth,mean_dproj, unique[i], min_dproj])
                 pred_groupe=np.array(liste_cluster)
-
+                print(pred_groupe)
                 clusters_valides = pred_groupe[:, 2].astype(int)
                 mask_total = np.isin(y_pred, clusters_valides)
                 array_prof_filtré = array_prof[mask_total]
