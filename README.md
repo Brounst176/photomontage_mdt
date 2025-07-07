@@ -127,7 +127,6 @@ Exemple :
 - `calibration` : liste des fichiers de calibration associés
 - `projet` : géométrie du projet au format **WKT MultiPolygon**
 
-Pour plus d’infos sur le format WKT : [libgeos.org/specifications/wkt](https://libgeos.org/specifications/wkt/)
 
 ---
 
