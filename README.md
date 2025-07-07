@@ -74,7 +74,7 @@ ProjetName/
 │   ├── image2.JPG
 │   └── ...
 │
-└── Output/
+└── output/
     └── ...
 ```
 
@@ -86,7 +86,7 @@ ProjetName/
 - `position_orientation.txt` : Positions et orientations des caméras exportées depuis Agisoft (avec modifications)
 - `projet.obj` : Maquette 3D du projet
 - `image/` : Images du modèle photogrammétrique
-- `Output/` : Résultats des photomontages
+- `output/` : Résultats des photomontages
 - `CalibExemple.xml` : Fichier de calibration exporté depuis Agisoft (plusieurs fichiers possibles)
 
 #### Exemple de `position_orientation.txt`
