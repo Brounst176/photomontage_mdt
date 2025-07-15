@@ -1,0 +1,1 @@
+Les résultats du photomontage seront enregistrés dans ce dossier
